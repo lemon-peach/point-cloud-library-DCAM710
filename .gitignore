@@ -30,3 +30,13 @@
 *.exe
 *.out
 *.app
+
+# DIR
+PCL_test/
+test/
+PointCloud/
+
+
+*.pcd
+*.sln
+*.ply
