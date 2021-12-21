@@ -35,8 +35,18 @@
 PCL_test/
 test/
 PointCloud/
+GetData/.vs/
+GetData/x64/
+GetData/GetData/x64/
+PointCloud_x64/.vs/
+PointCloud_x64/x64/
+PointCloud_x64/PointCloud_x64/x64/
 
 
 *.pcd
 *.sln
 *.ply
+*.props
+*.vcxproj
+*.user
+*.filters
