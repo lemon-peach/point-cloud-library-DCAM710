@@ -26,10 +26,13 @@
 #include <pcl/range_image/range_image.h>
 #include <pcl/visualization/range_image_visualizer.h>
 #include <pcl/keypoints/narf_keypoint.h>
+#include <pcl/keypoints/sift_keypoint.h>
 #include <pcl/features/range_image_border_extractor.h>
 #include <pcl/surface/poisson.h>
 #include <pcl/features/pfh.h>
 #include <pcl/visualization/pcl_plotter.h>
+#include <Eigen/SVD>
+#include <Eigen/Core>
 #include "function.h"
 
 using namespace std;
@@ -52,6 +55,39 @@ namespace cloud{
 	typedef struct {
 		double r, g, b;
 	}Color;
+
+	struct PointNormalPfhT {
+		union
+		{
+			float data[4];
+			struct
+			{
+				float x;
+				float y;
+				float z;
+			};
+		};
+		union
+		{
+			float data_n[4];
+			float normal[3];
+			struct
+			{
+				float normal_x;
+				float normal_y;
+				float normal_z;
+				float curvature;
+			};
+		};
+		struct 
+		{
+			Eigen::VectorXf pfh;
+		};
+	};
+
+	using PointNormalPfh = pcl::PointCloud<PointNormalPfhT>;
+	using PointNormalPfhPtr = PointNormalPfh::Ptr;
+	using PointNormalPfhPtrVec = vector<PointNormalPfhPtr, Eigen::aligned_allocator<PointNormalPfhT>>;
 }
 
 /**
@@ -277,6 +313,13 @@ pairAlign(
 	Eigen::Matrix4f& final_transformation,
 	bool downSample = false);
 
+int
+pairAlignWithCustom(
+	const cloud::PointNormalPfhPtr& srcCloudPtr,
+	const cloud::PointNormalPfhPtr& tgtCloudPtr,
+	cloud::PointCloudPtr& resCloudPtr,
+	Eigen::Matrix4f& final_transformation);
+
 /**
  * @brief		多个点云配准，将多个点云转换到第一个点云的坐标系
  * @param[in]	pointCloudVec				待配准的点云向量
@@ -422,6 +465,12 @@ getNARFKeypoints(
 	pcl::Indices& indices,
 	float support_size = 0.2f);
 
+int
+getSIFTKeypoint(
+	const cloud::PointCloudNormalPtr& pointCloudNormalPtr,
+	cloud::PointCloudPtr& result
+);
+
 /**
  * @brief		计算指定多个点的PFH特征
  * @param[in]	pointCloudPtr		输入点云
@@ -438,6 +487,16 @@ computePFH(
 	const pcl::Indices& indices,
 	Eigen::VectorXf& pfh_histogram,
 	int nr_split);
+
+int
+computePFH(
+	const cloud::PointCloudPtr& pointCloudPtr,
+	const pcl::PointCloud<pcl::Normal>::Ptr& normalPtr,
+	vector<Eigen::VectorXf>& pfh_histogramVec,
+	const pcl::Indices& indices,
+	int k = 10,
+	float r = 0.01f,
+	int nr_split = 5);
 
 /**
  * @brief		查询多个指定点的临近点索引
@@ -456,6 +515,14 @@ getNeighbors(
 	int k = 10,
 	float r = 0.01f);
 
+int
+getNeighbors(
+	const cloud::PointCloudPtr& pointCloudPtr,
+	const cloud::PointCloudPtr& searchPointPtr,
+	vector<vector<int>>& neighborsIndices,
+	int k = 10,
+	float r = 0.01f);
+
 /**
  * @brief 
  * @param x_data 
@@ -466,6 +533,12 @@ int
 plotHistogram(
 	vector<double> x_data,
 	vector<double> y_data);
+
+Eigen::MatrixXf
+PCA(
+	Eigen::MatrixXf origin,
+	int kStart,
+	float error = 0.1f);
 
 
 /**********************************实现*************************************/

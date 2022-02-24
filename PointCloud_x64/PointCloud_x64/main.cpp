@@ -55,77 +55,221 @@ int main() {
 	//default:
 	//	break;
 	//}
-	string filePath("D:\\剑走偏锋\\毕设\\硕士\\工程\\GetData\\GetData\\PCD\\001.pcd");
-	cloud::PointCloudPtr pointCloudPtr(new cloud::PointCloud);
-	if (pcl::io::loadPCDFile(filePath, *pointCloudPtr) == -1) {
-		cout << "Can not load" << filePath << endl;
-	}
-
-	pcl::PassThrough<cloud::PointT> pass;
-	pass.setFilterFieldName("z");
-	pass.setFilterLimits(0.1, 0.6);
-	pass.setInputCloud(pointCloudPtr);
-	pass.filter(*pointCloudPtr);
-
-	//pcl::RangeImage::Ptr rangeImagePtr(new pcl::RangeImage());
-	//getRangeImage(pointCloudPtr, rangeImagePtr, 0.3);
-
-	//pcl::visualization::RangeImageVisualizer rangeImageViewer("range image");
-	//rangeImageViewer.showRangeImage(*rangeImagePtr);
-	//while (!rangeImageViewer.wasStopped())
-	//{
-	//	rangeImageViewer.spinOnce(20);
+	//string filePath("D:\\剑走偏锋\\毕设\\硕士\\工程\\GetData\\GetData\\PCD\\001.pcd");
+	//cloud::PointCloudPtr pointCloudPtr(new cloud::PointCloud);
+	//if (pcl::io::loadPCDFile(filePath, *pointCloudPtr) == -1) {
+	//	cout << "Can not load" << filePath << endl;
 	//}
 
-	vector<int> indices({ 15789,16144,18129,27721,29808 });
-	vector<vector<int>> searchRs;
-	float radius = 0.02f;
-	getNeighbors(pointCloudPtr, indices, searchRs, 0, radius);
-	//pcl::Indices indices({ 15789, 15790, 15791 });
-	//getNARFKeypoints(pointCloudPtr, *rangeImagePtr, indices, 0.2);
+	//pcl::PassThrough<cloud::PointT> pass;
+	//pass.setFilterFieldName("z");
+	//pass.setFilterLimits(0.1, 0.6);
+	//pass.setInputCloud(pointCloudPtr);
+	//pass.filter(*pointCloudPtr);
 
-	pcl::ExtractIndices<pcl::PointXYZ> extract;
-	cloud::PointCloudPtr keyPointCloudPtr(new cloud::PointCloud);
-	pcl::PointIndicesPtr pointIndicesPtr(new pcl::PointIndices);
-	pointIndicesPtr->indices = indices;
-	extract.setInputCloud(pointCloudPtr);
-	extract.setIndices(pointIndicesPtr);
-	extract.setNegative(false);
-	extract.filter(*keyPointCloudPtr);
+	////pcl::RangeImage::Ptr rangeImagePtr(new pcl::RangeImage());
+	////getRangeImage(pointCloudPtr, rangeImagePtr, 0.3);
 
-	cloud::PointCloudPtrVec pointCloudPtrVec = { pointCloudPtr, keyPointCloudPtr };
+	////pcl::visualization::RangeImageVisualizer rangeImageViewer("range image");
+	////rangeImageViewer.showRangeImage(*rangeImagePtr);
+	////while (!rangeImageViewer.wasStopped())
+	////{
+	////	rangeImageViewer.spinOnce(20);
+	////}
 
-	visualizePointCloud(pointCloudPtrVec, colorVec, { 1, 4 });
+	//vector<int> indices({ 15789,16144,18129,27721,29808 });
+	//vector<vector<int>> searchRs;
+	//float radius = 0.02f;
+	//getNeighbors(pointCloudPtr, indices, searchRs, 0, radius);
+	////pcl::Indices indices({ 15789, 15790, 15791 });
+	////getNARFKeypoints(pointCloudPtr, *rangeImagePtr, indices, 0.2);
 
-	cloud::NormalPtr normalPtr(new cloud::Normal);
-	normalEstimation(pointCloudPtr, normalPtr, 0, 0.01f);
+	//pcl::ExtractIndices<pcl::PointXYZ> extract;
+	//cloud::PointCloudPtr keyPointCloudPtr(new cloud::PointCloud);
+	//pcl::PointIndicesPtr pointIndicesPtr(new pcl::PointIndices);
+	//pointIndicesPtr->indices = indices;
+	//extract.setInputCloud(pointCloudPtr);
+	//extract.setIndices(pointIndicesPtr);
+	//extract.setNegative(false);
+	//extract.filter(*keyPointCloudPtr);
 
-	cout << "normal finish" << endl;
+	//cloud::PointCloudPtrVec pointCloudPtrVec = { pointCloudPtr, keyPointCloudPtr };
 
-	Eigen::VectorXf pfh_histogram(125);
-	for (auto& ner : searchRs) {
-		computePFH(pointCloudPtr, normalPtr, ner, pfh_histogram, 5);
+	//visualizePointCloud(pointCloudPtrVec, colorVec, { 1, 4 });
 
-		cout << pfh_histogram.size() << "=" << pfh_histogram.rows() << "*" << pfh_histogram.cols() << endl;
-		//cout << pfh_histogram << endl;
-		for (int i = 0; i < pfh_histogram.size(); ++i) {
-			cout << pfh_histogram(i) << "\t";
-		}
-		cout << endl;
-		cout << "===================" << endl;
-	}
-	vector<double> x_data, y_data;
-	for (int i = 0; i < pfh_histogram.size(); ++i) {
-		x_data.push_back(i + 1);
-		y_data.push_back(pfh_histogram(i));
-	}
-	pcl::visualization::PCLPlotter plotter("histogram");
-	plotter.addPlotData(x_data, y_data, "test", vtkChart::BAR);
-	for (auto& i : y_data) {
-		i = i + 1;
-	}
-	plotter.addPlotData(x_data, y_data, "test2", vtkChart::BAR);
-	plotter.plot();
+	//cloud::NormalPtr normalPtr(new cloud::Normal);
+	//normalEstimation(pointCloudPtr, normalPtr, 0, 0.01f);
+
+	//cout << "normal finish" << endl;
+
+	//Eigen::VectorXf pfh_histogram(125);
+	//for (auto& ner : searchRs) {
+	//	computePFH(pointCloudPtr, normalPtr, ner, pfh_histogram, 5);
+
+	//	cout << pfh_histogram.size() << "=" << pfh_histogram.rows() << "*" << pfh_histogram.cols() << endl;
+	//	//cout << pfh_histogram << endl;
+	//	for (int i = 0; i < pfh_histogram.size(); ++i) {
+	//		cout << pfh_histogram(i) << "\t";
+	//	}
+	//	cout << endl;
+	//	cout << "===================" << endl;
+	//}
+	//vector<double> x_data, y_data;
+	//for (int i = 0; i < pfh_histogram.size(); ++i) {
+	//	x_data.push_back(i + 1);
+	//	y_data.push_back(pfh_histogram(i));
+	//}
+	//pcl::visualization::PCLPlotter plotter("histogram");
+	//plotter.addPlotData(x_data, y_data, "test", vtkChart::BAR);
+	//for (auto& i : y_data) {
+	//	i = i + 1;
+	//}
+	//plotter.addPlotData(x_data, y_data, "test2", vtkChart::BAR);
+	//plotter.plot();
+	// 
+	//Eigen::MatrixXd X(6, 2);
+	//X << -1, 1, -2, -1, -3, -2, 1, 1, 2, 1, 3, 2;
+	//cout << "X:\n" << X << endl;
+	//PCA(X,1,0.1);
+
+	//string filePath = "D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\PCL官方数据\\data\\tutorials\\pairwise";
+	//string filePath = "D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\PCL官方数据\\data\\tutorials\\template_alignment";
+	vector<string> files;
+	//string path = "D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\bunny\\data";
+	//string path = "D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\PCL官方数据\\data\\tutorials\\pairwise";
+	string path = "D:\\剑走偏锋\\毕设\\硕士\\工程\\GetData\\GetData\\PCD";
+	cloud::PointCloudPtrVec pointCloudPtrVec;
+	getFiles(path, files, "pcd", true);
+	vector<int> pointCloudIndexVec({ 0, 1 });
+	
+	//for (auto& _index : pointCloudIndexVec) {
+	//	//if (_file.find("data\\bun") != -1) {
+	//	//	cloud::PointCloudPtr _temp(new cloud::PointCloud);
+	//	//	pcl::io::loadPLYFile(_file, *_temp);
+	//	//	pointCloudPtrVec.push_back(_temp);
+	//	//}
+	//	cloud::PointCloudPtr _temp(new cloud::PointCloud);
+	//	pcl::io::loadPCDFile(files[_index], *_temp);
+	//	_temp->width = 640;
+	//	_temp->height = 480;
+	//	pointCloudPtrVec.push_back(_temp);
+	//}
+
+	//pcl::PassThrough<pcl::PointXYZ> pass;
+	//for (auto& _pointCloudPtr : pointCloudPtrVec) {
+	//	pass.setFilterFieldName("z");
+	//	pass.setFilterLimits(0.05, 1);
+	//	pass.setInputCloud(_pointCloudPtr);
+	//	pass.filter(*_pointCloudPtr);
+	//}
+
+	//visualizePointCloud(pointCloudPtrVec, colorVec);
+
+	////int index = 2;
+	//vector<pcl::RangeImage::Ptr> rangeImagePtrVec;
+	//for (auto _pointCloudPtr : pointCloudPtrVec) {
+	//	pcl::RangeImage::Ptr rangeImagePtr(new pcl::RangeImage());
+	//	getRangeImage(_pointCloudPtr, rangeImagePtr, 0.3f);
+	//	rangeImagePtrVec.push_back(rangeImagePtr);
+	//}
+
+	//for (auto& _rangeImagePtr : rangeImagePtrVec) {
+	//	pcl::visualization::RangeImageVisualizer rangeImageViewer("range image");
+	//	rangeImageViewer.showRangeImage(*_rangeImagePtr);
+	//	while (!rangeImageViewer.wasStopped())
+	//	{
+	//		rangeImageViewer.spinOnce(20);
+	//	}
+	//}
+
+	//vector<vector<int>> keyPointsIndicesVec;
+	//cloud::PointCloudPtrVec keyPointPtrVec;
+	//pcl::ExtractIndices<pcl::PointXYZ> extract;
+	//pcl::PointIndicesPtr pointIndicesPtr(new pcl::PointIndices);
+	//for (int i = 0; i < pointCloudPtrVec.size(); ++i) {
+	//	vector<int> _indices;
+	//	cloud::PointCloudPtr _keyPointPtr(new cloud::PointCloud);
+	//	getNARFKeypoints(pointCloudPtrVec[i], *(rangeImagePtrVec[i]), _indices, 0.1f);
+	//	pointIndicesPtr->indices = _indices;
+	//	extract.setInputCloud(pointCloudPtrVec[i]);
+	//	extract.setIndices(pointIndicesPtr);
+	//	extract.setNegative(false);
+	//	extract.filter(*_keyPointPtr);
+	//	keyPointsIndicesVec.push_back(_indices);
+	//	keyPointPtrVec.push_back(_keyPointPtr);
+	//}
+
+	////cloud::PointCloudNormalPtr cloudNormalPtr(new cloud::PointCloudNormal);
+	////cloud::PointCloudPtr keyPointCloudPtr(new cloud::PointCloud);
+	////normalEstimation(pointCloudPtrVec[index], cloudNormalPtr);
+	////getSIFTKeypoint(cloudNormalPtr, keyPointCloudPtr);
+
+	//for (int i = 0; i < pointCloudPtrVec.size(); ++i) {
+	//	cloud::PointCloudPtrVec _viewerPointCloudPtrVec = { pointCloudPtrVec[i], keyPointPtrVec[i] };
+	//	visualizePointCloud(_viewerPointCloudPtrVec, colorVec, { 1, 4 });
+	//}
+
+	//vector<cloud::NormalPtr> NormalPtrVec;
+	//for (int i = 0; i < pointCloudPtrVec.size(); ++i) {
+	//	cloud::NormalPtr _NormalPtr;
+	//	normalEstimation(pointCloudPtrVec[i], _NormalPtr);
+	//	NormalPtrVec.push_back(_NormalPtr);
+	//}
+
+	//int n_split = 3;
+	//int pfhNum = pow(n_split, 3);
+	//vector<vector<Eigen::VectorXf>> pfh_histogramVec;
+	//for (int i = 0; i < pointCloudPtrVec.size(); ++i) {
+	//	vector<Eigen::VectorXf> _pfh_histograms;
+	//	computePFH(pointCloudPtrVec[i], NormalPtrVec[i], _pfh_histograms, keyPointsIndicesVec[i], 20, 0.01, n_split);
+	//	pfh_histogramVec.push_back(_pfh_histograms);
+	//}
+
+	//cloud::PointNormalPfhPtrVec pointNormalPfhPtrVec;
+	//vector<cloud::PointNormalPfhPtrVec> pairPoints;
+	//pairPoints.resize(pfh_histogramVec.size() - 1);
+	//for (int i = 0; i < pfh_histogramVec.size() - 1; ++i) {
+	//	Eigen::MatrixXf pfhPCA(pfh_histogramVec[i].size() + pfh_histogramVec[i + 1].size(), pfhNum);
+	//	int j = 0;
+	//	for (auto& pfh : pfh_histogramVec[i]) {
+	//		pfhPCA.row(j) = pfh;
+	//		++j;
+	//	}
+	//	for (auto& pfh : pfh_histogramVec[i + 1]) {
+	//		pfhPCA.row(j) = pfh;
+	//		++j;
+	//	}
+	//	Eigen::MatrixXf _pfhReduce = PCA(pfhPCA, 4, 1.0);
+	//	cloud::PointNormalPfhPtr _temp(new cloud::PointNormalPfh);
+	//	for (int _index = 0; _index < keyPointPtrVec[i]->size(); ++_index) {
+	//		_temp->points[_index].x = keyPointPtrVec[i]->points[_index].x;
+	//		_temp->points[_index].y = keyPointPtrVec[i]->points[_index].y;
+	//		_temp->points[_index].z = keyPointPtrVec[i]->points[_index].z;
+	//		_temp->points[_index].pfh = _pfhReduce.row(_index);
+	//	}
+	//	cloud::PointNormalPfhPtr _temp2(new cloud::PointNormalPfh);
+	//	for (int _index = 0; _index < keyPointPtrVec[i+1]->size(); ++_index) {
+	//		_temp2->points[_index].x = keyPointPtrVec[i]->points[_index].x;
+	//		_temp2->points[_index].y = keyPointPtrVec[i]->points[_index].y;
+	//		_temp2->points[_index].z = keyPointPtrVec[i]->points[_index].z;
+	//		_temp2->points[_index].pfh = _pfhReduce.row(_index+ keyPointPtrVec[i]->size());
+	//	}
+	//	pairPoints[i] = { _temp, _temp2 };
+	//}
+
+	//cloud::PointCloudPtr resCloudPtr(new cloud::PointCloud);
+	//Eigen::Matrix4f trans;
+	//pairAlignWithCustom(pairPoints[0][0], pairPoints[0][1], resCloudPtr, trans);
+	//cloud::PointCloudPtr _transPtr(new cloud::PointCloud);
+	//pcl::transformPointCloud(*(pointCloudPtrVec[pointCloudIndexVec[0]]), *_transPtr, trans);
+
+	//cloud::PointCloudPtrVec viewerPointPtrVec = { (_transPtr, pointCloudPtrVec[pointCloudIndexVec[1]]) };
+	//visualizePointCloud(viewerPointPtrVec, colorVec);
+
+
+
+
+	//registerWithKeypoint();
 
 	return 0;
 }
@@ -295,21 +439,30 @@ int registerWithKeypoint() {
 
 	//读取PCD文件
 	cloud::PointCloudPtrVec pointCloudPtrVec;
-	for (auto& file : files) {
-		cloud::PointCloudPtr pointCloudPtr(new cloud::PointCloud);
-		if (pcl::io::loadPCDFile(file, *pointCloudPtr) != -1) {
-			pointCloudPtr->width = 640;
-			pointCloudPtr->height = 480;
-			pointCloudPtrVec.push_back(pointCloudPtr);
-			cout << "Load " << file << " success" << endl;
-		}
-		else {
-			setTextRed();
-			cout << "Load " << file << " failed" << endl;
-			setTextWhite();
-			return -1;
-		}
+	//for (auto& file : files) {
+	//	cloud::PointCloudPtr pointCloudPtr(new cloud::PointCloud);
+	//	if (pcl::io::loadPCDFile(file, *pointCloudPtr) != -1) {
+	//		pointCloudPtr->width = 640;
+	//		pointCloudPtr->height = 480;
+	//		pointCloudPtrVec.push_back(pointCloudPtr);
+	//		cout << "Load " << file << " success" << endl;
+	//	}
+	//	else {
+	//		setTextRed();
+	//		cout << "Load " << file << " failed" << endl;
+	//		setTextWhite();
+	//		return -1;
+	//	}
+	//}
+
+	cloud::PointCloudPtr pointCloudPtr(new cloud::PointCloud);
+	if (pcl::io::loadPCDFile(files[0], *pointCloudPtr) != -1) {
+		pointCloudPtr->width = 640;
+		pointCloudPtr->height = 480;
+		pointCloudPtrVec.push_back(pointCloudPtr);
+		cout << "Load " << files[0] << " success" << endl;
 	}
+
 	visualizePointCloud(pointCloudPtrVec, colorVec);
 	cout << "0 to stop, else to continue" << endl;
 	cin >> key;

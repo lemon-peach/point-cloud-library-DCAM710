@@ -496,6 +496,73 @@ pairAlign(
 	return 0;
 }
 
+int
+pairAlignWithCustom(
+	const cloud::PointNormalPfhPtr& srcCloudPtr,
+	const cloud::PointNormalPfhPtr& tgtCloudPtr,
+	cloud::PointCloudPtr& resCloudPtr,
+	Eigen::Matrix4f& final_transformation)
+{
+	//自定义 Point Representation
+	class MyPointRepresentationNormal :public pcl::PointRepresentation<cloud::PointNormalPfhT> {
+		using pcl::PointRepresentation<cloud::PointNormalPfhT>::nr_dimensions_;
+	public:
+		MyPointRepresentationNormal() {
+			nr_dimensions_ = 7;
+		}
+		virtual void copyToFloatArray(const cloud::PointNormalPfhT& p, float* out) const
+		{
+			out[0] = p.x;
+			out[1] = p.y;
+			out[2] = p.z;
+			//out[3] = p.pfh[0];
+			//out[4] = p.pfh[1];
+			//out[5] = p.pfh[2];
+			//out[6] = p.pfh[3];
+			//out[3] = p.curvature;
+		}
+	};
+
+	cloud::PointNormalPfhPtr _srcCloudPtr(new cloud::PointNormalPfh);  //源点云下采样
+	cloud::PointNormalPfhPtr _tgtCloudPtr(new cloud::PointNormalPfh);  //目标点云下采样
+	//下采样
+	_srcCloudPtr = srcCloudPtr;
+	_tgtCloudPtr = tgtCloudPtr;
+
+	MyPointRepresentationNormal point_representation;
+	float alpha[4] = { 1.0, 1.0, 1.0, 1.0 };
+	point_representation.setRescaleValues(alpha);
+
+	//pcl::IterativeClosestPointNonLinear<cloud::PointNormalPfhT, cloud::PointNormalPfhT> icp_nl;  //实例 ICP 对象
+	//icp_nl.setEuclideanFitnessEpsilon(1e-6);
+	//icp_nl.setTransformationEpsilon(1e-6);  //设置两个临近变换的最大平方差
+	//icp_nl.setMaxCorrespondenceDistance(0.1);  //设置源点与目标点的最大匹配距离(米)
+	//icp_nl.setPointRepresentation(pcl::make_shared<const MyPointRepresentationNormal>(point_representation));
+	//icp_nl.setInputSource(_srcCloudPtr);
+	//icp_nl.setInputTarget(_tgtCloudPtr);
+
+	////多次配准
+	//Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity(), pre_transformation;
+	//cloud::PointNormalPfhPtr transCloudNormalPtr = _srcCloudPtr;
+	//icp_nl.setMaximumIterations(2);  //设置迭代次数
+	//for (int i = 0; i < 64; ++i) {
+	//	icp_nl.setInputSource(_srcCloudPtr);
+	//	icp_nl.align(*transCloudNormalPtr);
+	//	transformation = icp_nl.getFinalTransformation() * transformation;
+
+	//	if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()) {
+	//		icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.005);
+	//	}
+	//	pre_transformation = transformation;
+	//	_srcCloudPtr = transCloudNormalPtr;
+	//}
+	//final_transformation = transformation;
+	//cloud::PointCloudPtr _srcPointCloudPtr(new cloud::PointCloud);
+	//pcl::copyPointCloud<cloud::PointNormalPfhT, cloud::PointT>(*_srcCloudPtr, *_srcPointCloudPtr);
+	//pcl::transformPointCloud(*_srcPointCloudPtr, *resCloudPtr, final_transformation);
+	return 0;
+}
+
 /**
  * @brief		多个点云配准，将多个点云转换到第一个点云的坐标系
  * @param[in]	pointCloudVec				待配准的点云向量
@@ -809,6 +876,8 @@ visualizePointCloud(
 	}
 
 	cout << "Shift + 鼠标左键选取点" << endl;
+	cout << "单独显示点云：p" << endl;
+	cout << "切换下一个点云：a" << endl;
 
 	int text_xpos = 0;	//文本x位置
 	int text_ypos = 0;	//文本y位置
@@ -1064,8 +1133,8 @@ getNARFKeypoints(
 	pcl::NarfKeypoint narf_keypoint_detector(&range_image_border_extractor);
 	narf_keypoint_detector.setRangeImage(&rangeImage);
 	narf_keypoint_detector.getParameters().support_size = support_size;
-	//narf_keypoint_detector.getParameters ().add_points_on_straight_edges = true;
-	//narf_keypoint_detector.getParameters ().distance_for_additional_points = 0.1;
+	narf_keypoint_detector.getParameters ().add_points_on_straight_edges = true;
+	narf_keypoint_detector.getParameters ().distance_for_additional_points = 0.1;
 
 	narf_keypoint_detector.compute(keypoint_indices);
 
@@ -1110,16 +1179,47 @@ getNARFKeypoints(
 	float support_size)
 {
 	pcl::PointCloud<int> keypoint_indices;
+	cloud::PointCloudPtr keyPointPtr(new cloud::PointCloud);
 
 	getNARFKeypoints(
 		pointCloudPtr,
 		rangeImage,
-		keypoint_indices,
+		keyPointPtr,
 		support_size);
-	pcl::PointCloud<int>::iterator begin = keypoint_indices.begin();
-	pcl::PointCloud<int>::iterator end = keypoint_indices.end();
-	indices.assign(begin, end);
+	//pcl::PointCloud<int>::iterator begin = keypoint_indices.begin();
+	//pcl::PointCloud<int>::iterator end = keypoint_indices.end();
+	//indices.assign(begin, end);
+	vector<vector<int>> _indices;
+	for (auto& _point : *keyPointPtr) {
+		getNeighbors(pointCloudPtr, keyPointPtr, _indices, 1);
+	}
 
+	for (auto& _index : _indices) {
+		indices.push_back(_index[0]);
+	}
+
+	return 0;
+}
+
+int
+getSIFTKeypoint(
+	const cloud::PointCloudNormalPtr& pointCloudNormalPtr,
+	cloud::PointCloudPtr& result
+	)
+{
+	const float min_scale = 0.005f;
+	const int n_octaves = 5; //3
+	const int n_scales_per_octave = 6; //4
+	const float min_contrast = 0.005f;
+
+	// 使用法向量作为强度计算关键点，还可以是rgb、z值或者自定义，具体参看API
+	pcl::SIFTKeypoint<cloud::PointNormalT, cloud::PointT> sift; //PointT 可以是 pcl::PointWithScale包含尺度信息
+	pcl::search::KdTree<cloud::PointNormalT>::Ptr tree(new pcl::search::KdTree<cloud::PointNormalT>());
+	sift.setSearchMethod(tree);
+	sift.setScales(min_scale, n_octaves, n_scales_per_octave);
+	sift.setMinimumContrast(min_contrast);
+	sift.setInputCloud(pointCloudNormalPtr);
+	sift.compute(*result);
 	return 0;
 }
 
@@ -1149,6 +1249,38 @@ computePFH(
 	pfh.setInputNormals(normalPtr);
 	pfh.setRadiusSearch(0.04);
 	pfh.computePointPFHSignature(*pointCloudPtr, *normalPtr, indices, nr_split, pfh_histogram);
+	return 0;
+}
+
+int
+computePFH(
+	const cloud::PointCloudPtr& pointCloudPtr,
+	const pcl::PointCloud<pcl::Normal>::Ptr& normalPtr,
+	vector<Eigen::VectorXf>& pfh_histogramVec,
+	const pcl::Indices& indices,
+	int k,
+	float r,
+	int nr_split)
+{
+	pcl::PFHEstimation<cloud::PointT, pcl::Normal, pcl::PFHSignature125> pfh;
+
+	pcl::search::KdTree<cloud::PointT>::Ptr kdTreePtr(new pcl::search::KdTree<cloud::PointT>());
+
+	pfh.setSearchMethod(kdTreePtr);
+	pfh.setInputCloud(pointCloudPtr);
+	pfh.setInputNormals(normalPtr);
+	pfh.setRadiusSearch(0.04);
+	//pfh.computePointPFHSignature(*pointCloudPtr, *normalPtr, indices, nr_split, pfh_histogram);
+
+	vector<vector<int>> neighborsIndices;
+	getNeighbors(pointCloudPtr, indices, neighborsIndices, k, r);
+	for (auto& _indices : neighborsIndices) {
+		Eigen::VectorXf pfh_histogram;
+		pfh.computePointPFHSignature(*pointCloudPtr, *normalPtr, _indices, nr_split, pfh_histogram);
+		pfh_histogramVec.push_back(pfh_histogram);
+	}
+
+
 	return 0;
 }
 
@@ -1196,6 +1328,40 @@ getNeighbors(
 }
 
 int
+getNeighbors(
+	const cloud::PointCloudPtr& pointCloudPtr,
+	const cloud::PointCloudPtr& searchPointPtr,
+	vector<vector<int>>& neighborsIndices,
+	int k,
+	float r)
+{
+	neighborsIndices.clear();
+
+	pcl::search::KdTree<cloud::PointT> kdTree;
+	kdTree.setInputCloud(pointCloudPtr);
+	for (int i = 0; i < searchPointPtr->size(); ++i) {
+		vector<int> indecesTemp;
+		vector<float> distanceTemp;
+		if (k) {
+			if (kdTree.nearestKSearch(searchPointPtr->at(i), k, indecesTemp, distanceTemp) <= 0) {
+				setTextYellow();
+				cout << "Find none neighbor for " << i << "th" << endl;
+				setTextWhite();
+			}
+		}
+		else {
+			if (kdTree.radiusSearch(searchPointPtr->at(i), r, indecesTemp, distanceTemp) <= 0) {
+				setTextYellow();
+				cout << "Find none neighbor for " << i << "th" << endl;
+				setTextWhite();
+			}
+		}
+		neighborsIndices.push_back(indecesTemp);
+	}
+	return 0;
+}
+
+int
 plotHistogram(
 	vector<double> x_data,
 	vector<double> y_data)
@@ -1206,3 +1372,37 @@ plotHistogram(
 	return 0;
 }
 
+Eigen::MatrixXf
+PCA(
+	Eigen::MatrixXf origin,
+	int kStart,
+	float error)
+{
+	int cols = origin.cols();
+	int rows = origin.rows();
+	int i = 0;
+	float mean = 0.0f;
+	for (i = 0; i < cols; ++i) {
+		mean = origin.col(i).mean();
+		origin.col(i) = origin.col(i) - mean*Eigen::VectorXf::Ones(rows);
+	}
+	Eigen::MatrixXf SVDMatrix = origin.transpose() / sqrt(rows);
+	Eigen::JacobiSVD<Eigen::MatrixXf> svd(SVDMatrix, Eigen::ComputeThinU | Eigen::ComputeThinV);
+	Eigen::MatrixXf U = svd.matrixU();
+	Eigen::MatrixXf V = svd.matrixV();
+	Eigen::VectorXf D = svd.singularValues();
+	cout << "U:\n" << U << endl;
+	cout << "V:\n" << V << endl;
+	cout << "D:\n" << D << endl;
+	int k = kStart - 1;
+	float PCAerror = 1.0f;
+	while (PCAerror > error && k <= cols) {
+		++k;
+		PCAerror = 1 - (D.head(k).sum() / D.sum());
+	}
+	Eigen::MatrixXf transMatrix = U.block(0, 0, U.rows(), k);
+	Eigen::MatrixXf result = origin * transMatrix;
+	cout << "error: " << PCAerror << endl;
+	cout << "result:\n" << result;
+	return result;
+}
