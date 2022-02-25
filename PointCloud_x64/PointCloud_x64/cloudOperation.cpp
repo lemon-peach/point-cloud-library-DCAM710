@@ -515,6 +515,10 @@ pairAlignWithCustom(
 			out[0] = p.x;
 			out[1] = p.y;
 			out[2] = p.z;
+			out[3] = p.data_n[0];
+			out[4] = p.data_n[1];
+			out[5] = p.data_n[2];
+			out[6] = p.data_n[3];
 			//out[3] = p.pfh[0];
 			//out[4] = p.pfh[1];
 			//out[5] = p.pfh[2];
@@ -530,36 +534,38 @@ pairAlignWithCustom(
 	_tgtCloudPtr = tgtCloudPtr;
 
 	MyPointRepresentationNormal point_representation;
-	float alpha[4] = { 1.0, 1.0, 1.0, 1.0 };
+	float alpha[7] = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
 	point_representation.setRescaleValues(alpha);
 
-	//pcl::IterativeClosestPointNonLinear<cloud::PointNormalPfhT, cloud::PointNormalPfhT> icp_nl;  //实例 ICP 对象
+	pcl::IterativeClosestPointNonLinear<cloud::PointNormalPfhT, cloud::PointNormalPfhT> icp_nl;  //实例 ICP 对象
 	//icp_nl.setEuclideanFitnessEpsilon(1e-6);
-	//icp_nl.setTransformationEpsilon(1e-6);  //设置两个临近变换的最大平方差
-	//icp_nl.setMaxCorrespondenceDistance(0.1);  //设置源点与目标点的最大匹配距离(米)
-	//icp_nl.setPointRepresentation(pcl::make_shared<const MyPointRepresentationNormal>(point_representation));
-	//icp_nl.setInputSource(_srcCloudPtr);
-	//icp_nl.setInputTarget(_tgtCloudPtr);
+	icp_nl.setTransformationEpsilon(1e-5);  //设置两个临近变换的最大平方差
+	icp_nl.setMaxCorrespondenceDistance(0.2);  //设置源点与目标点的最大匹配距离(米)
+	icp_nl.setPointRepresentation(pcl::make_shared<const MyPointRepresentationNormal>(point_representation));
+	icp_nl.setInputSource(_srcCloudPtr);
+	icp_nl.setInputTarget(_tgtCloudPtr);
 
 	////多次配准
-	//Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity(), pre_transformation;
-	//cloud::PointNormalPfhPtr transCloudNormalPtr = _srcCloudPtr;
-	//icp_nl.setMaximumIterations(2);  //设置迭代次数
-	//for (int i = 0; i < 64; ++i) {
-	//	icp_nl.setInputSource(_srcCloudPtr);
-	//	icp_nl.align(*transCloudNormalPtr);
-	//	transformation = icp_nl.getFinalTransformation() * transformation;
+	Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity(), pre_transformation;
+	cloud::PointNormalPfhPtr transCloudNormalPtr = _srcCloudPtr;
+	icp_nl.setMaximumIterations(2);  //设置迭代次数
+	for (int i = 0; i < 64; ++i) {
+		icp_nl.setInputSource(_srcCloudPtr);
+		icp_nl.align(*transCloudNormalPtr);
+		transformation = icp_nl.getFinalTransformation() * transformation;
+		cout << i << ": " << transformation << endl;
+		cout << "================" << endl;
 
-	//	if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()) {
-	//		icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.005);
-	//	}
-	//	pre_transformation = transformation;
-	//	_srcCloudPtr = transCloudNormalPtr;
-	//}
-	//final_transformation = transformation;
-	//cloud::PointCloudPtr _srcPointCloudPtr(new cloud::PointCloud);
-	//pcl::copyPointCloud<cloud::PointNormalPfhT, cloud::PointT>(*_srcCloudPtr, *_srcPointCloudPtr);
-	//pcl::transformPointCloud(*_srcPointCloudPtr, *resCloudPtr, final_transformation);
+		if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()) {
+			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.005);
+		}
+		pre_transformation = transformation;
+		_srcCloudPtr = transCloudNormalPtr;
+	}
+	final_transformation = transformation;
+	cloud::PointCloudPtr _srcPointCloudPtr(new cloud::PointCloud);
+	pcl::copyPointCloud<cloud::PointNormalPfhT, cloud::PointT>(*_srcCloudPtr, *_srcPointCloudPtr);
+	pcl::transformPointCloud(*_srcPointCloudPtr, *resCloudPtr, final_transformation);
 	return 0;
 }
 
@@ -1263,6 +1269,7 @@ computePFH(
 	int nr_split)
 {
 	pcl::PFHEstimation<cloud::PointT, pcl::Normal, pcl::PFHSignature125> pfh;
+	//pcl::PFHEstimation<cloud::PointT, pcl::Normal, cloud::PFH27> pfh;
 
 	pcl::search::KdTree<cloud::PointT>::Ptr kdTreePtr(new pcl::search::KdTree<cloud::PointT>());
 
@@ -1274,8 +1281,9 @@ computePFH(
 
 	vector<vector<int>> neighborsIndices;
 	getNeighbors(pointCloudPtr, indices, neighborsIndices, k, r);
+	cout << "neighborsIndices size: " << neighborsIndices.size() << endl;
 	for (auto& _indices : neighborsIndices) {
-		Eigen::VectorXf pfh_histogram;
+		Eigen::VectorXf pfh_histogram(125);
 		pfh.computePointPFHSignature(*pointCloudPtr, *normalPtr, _indices, nr_split, pfh_histogram);
 		pfh_histogramVec.push_back(pfh_histogram);
 	}
@@ -1391,18 +1399,20 @@ PCA(
 	Eigen::MatrixXf U = svd.matrixU();
 	Eigen::MatrixXf V = svd.matrixV();
 	Eigen::VectorXf D = svd.singularValues();
-	cout << "U:\n" << U << endl;
-	cout << "V:\n" << V << endl;
-	cout << "D:\n" << D << endl;
-	int k = kStart - 1;
+	//cout << "U:\n" << U << endl;
+	//cout << "V:\n" << V << endl;
+	//cout << "D:\n" << D << endl;
+	int k = kStart;
 	float PCAerror = 1.0f;
+	if (PCAerror > error) --k;
 	while (PCAerror > error && k <= cols) {
 		++k;
 		PCAerror = 1 - (D.head(k).sum() / D.sum());
 	}
+	PCAerror = 1 - (D.head(k).sum() / D.sum());
 	Eigen::MatrixXf transMatrix = U.block(0, 0, U.rows(), k);
 	Eigen::MatrixXf result = origin * transMatrix;
 	cout << "error: " << PCAerror << endl;
-	cout << "result:\n" << result;
+	//cout << "result:\n" << result;
 	return result;
 }

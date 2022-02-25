@@ -56,38 +56,41 @@ namespace cloud{
 		double r, g, b;
 	}Color;
 
-	struct PointNormalPfhT {
-		union
-		{
-			float data[4];
-			struct
-			{
-				float x;
-				float y;
-				float z;
-			};
-		};
-		union
-		{
-			float data_n[4];
-			float normal[3];
-			struct
-			{
-				float normal_x;
-				float normal_y;
-				float normal_z;
-				float curvature;
-			};
-		};
-		struct 
-		{
-			Eigen::VectorXf pfh;
-		};
-	};
+	//struct PointNormalPfhT {
+	//	union
+	//	{
+	//		float data[4];
+	//		struct
+	//		{
+	//			float x;
+	//			float y;
+	//			float z;
+	//		};
+	//	};
+	//	union
+	//	{
+	//		float data_n[4];
+	//		float normal[3];
+	//		struct
+	//		{
+	//			float normal_x;
+	//			float normal_y;
+	//			float normal_z;
+	//			float curvature;
+	//		};
+	//	};
+	//	struct 
+	//	{
+	//		Eigen::VectorXf pfh;
+	//	};
+	//};
 
+	using PointNormalPfhT = pcl::PointNormal;
 	using PointNormalPfh = pcl::PointCloud<PointNormalPfhT>;
 	using PointNormalPfhPtr = PointNormalPfh::Ptr;
 	using PointNormalPfhPtrVec = vector<PointNormalPfhPtr, Eigen::aligned_allocator<PointNormalPfhT>>;
+
+	using PFH27 = pcl::Histogram<27>;
 }
 
 /**
