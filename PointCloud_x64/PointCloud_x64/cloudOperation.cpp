@@ -409,7 +409,7 @@ pairAlignWithNormal(
 
 	pcl::IterativeClosestPointNonLinear<cloud::PointNormalT, cloud::PointNormalT> icp_nl;  //实例 ICP 对象
 	//icp_nl.setEuclideanFitnessEpsilon(1e-6);
-	icp_nl.setTransformationEpsilon(1e-6);  //设置两个临近变换的最大平方差
+	icp_nl.setTransformationEpsilon(1e-4);  //设置两个临近变换的最大平方差
 	icp_nl.setMaxCorrespondenceDistance(0.1);  //设置源点与目标点的最大匹配距离(米)
 	icp_nl.setPointRepresentation(pcl::make_shared<const MyPointRepresentationNormal>(point_representation));
 	icp_nl.setInputSource(_srcCloudNormalPtr);
@@ -419,16 +419,31 @@ pairAlignWithNormal(
 	Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity(), pre_transformation;
 	cloud::PointCloudNormalPtr transCloudNormalPtr = _srcCloudNormalPtr;
 	icp_nl.setMaximumIterations(2);  //设置迭代次数
-	for (int i = 0; i < 64; ++i) {
+	cloud::Color redPoint = { 255.0, 0.0, 0.0 };
+	cloud::Color greenPoint = { 0.0, 255.0, 0.0 };
+	cloud::Color bluePoint = { 0.0, 0.0, 255.0 };
+	cloud::Color yellowPoint = { 255.0, 255.0, 0.0 };
+	cloud::Color purplePoint = { 255.0, 0.0, 255.0 };
+	cloud::Color cyanPoint = { 255.0, 0.0, 255.0 };
+	cloud::Color whitePoint = { 255.0, 255.0, 255.0 };
+	vector<cloud::Color> colorVec = { redPoint, greenPoint, bluePoint, yellowPoint, purplePoint, cyanPoint };
+	vector<cloud::Color> colorWhiteVec = { whitePoint };
+	for (int i = 0; i < 32; ++i) {
+		cout << i << "th align" << endl;
 		icp_nl.setInputSource(_srcCloudNormalPtr);
 		icp_nl.align(*transCloudNormalPtr);
 		transformation = icp_nl.getFinalTransformation() * transformation;
 
 		if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()) {
-			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.005);
+			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.003);
+			cout << "set distance to" << icp_nl.getMaxCorrespondenceDistance() << endl;
 		}
-		pre_transformation = transformation;
+		pre_transformation = icp_nl.getLastIncrementalTransformation();
+		//pre_transformation = transformation;
 		_srcCloudNormalPtr = transCloudNormalPtr;
+		pcl::transformPointCloud(*srcCloudPtr, *resCloudPtr, transformation);
+		cloud::PointCloudPtrVec _viewerVec = { resCloudPtr, tgtCloudPtr };
+		visualizePointCloud(_viewerVec, colorVec, {1, 4});
 	}
 	final_transformation = transformation;
 	pcl::transformPointCloud(*srcCloudPtr, *resCloudPtr, final_transformation);
@@ -535,12 +550,13 @@ pairAlignWithCustom(
 
 	MyPointRepresentationNormal point_representation;
 	float alpha[7] = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
+	//float alpha[3] = { 1.0, 1.0, 1.0 };
 	point_representation.setRescaleValues(alpha);
 
 	pcl::IterativeClosestPointNonLinear<cloud::PointNormalPfhT, cloud::PointNormalPfhT> icp_nl;  //实例 ICP 对象
 	//icp_nl.setEuclideanFitnessEpsilon(1e-6);
-	icp_nl.setTransformationEpsilon(1e-5);  //设置两个临近变换的最大平方差
-	icp_nl.setMaxCorrespondenceDistance(0.2);  //设置源点与目标点的最大匹配距离(米)
+	icp_nl.setTransformationEpsilon(1e-3);  //设置两个临近变换的最大平方差
+	icp_nl.setMaxCorrespondenceDistance(0.5);  //设置源点与目标点的最大匹配距离(米)
 	icp_nl.setPointRepresentation(pcl::make_shared<const MyPointRepresentationNormal>(point_representation));
 	icp_nl.setInputSource(_srcCloudPtr);
 	icp_nl.setInputTarget(_tgtCloudPtr);
@@ -555,11 +571,12 @@ pairAlignWithCustom(
 		transformation = icp_nl.getFinalTransformation() * transformation;
 		cout << i << ": " << transformation << endl;
 		cout << "================" << endl;
-
+		if (abs((icp_nl.getFinalTransformation() - pre_transformation).sum()) == 0) break;
 		if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()) {
-			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.005);
+			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.01);
+			cout << "setMaxCorrespondenceDistance" << icp_nl.getMaxCorrespondenceDistance() << endl;
 		}
-		pre_transformation = transformation;
+		pre_transformation = icp_nl.getLastIncrementalTransformation();
 		_srcCloudPtr = transCloudNormalPtr;
 	}
 	final_transformation = transformation;
@@ -714,7 +731,7 @@ visualizePointCloud(
 	const cloud::Color& backgroundColor,
 	bool is_auto)
 {
-	vector<cloud::PointCloudPtr, Eigen::aligned_allocator<cloud::PointT>> pointCloudPtrVec(1, pointCloudPtr);
+	vector<cloud::PointCloudPtr> pointCloudPtrVec(1, pointCloudPtr);
 	vector<cloud::Color> pointColorVec(1, pointColor);
 	vector<int> pointSizeVec(1, pointSize);
 	vector<pcl::PolygonMesh> meshVec(1, mesh);
@@ -1282,7 +1299,10 @@ computePFH(
 	vector<vector<int>> neighborsIndices;
 	getNeighbors(pointCloudPtr, indices, neighborsIndices, k, r);
 	cout << "neighborsIndices size: " << neighborsIndices.size() << endl;
+	int cont = 0;
 	for (auto& _indices : neighborsIndices) {
+		cout << "cont: " << ++cont << endl;
+		cout << "indices size: " << _indices.size() << endl;
 		Eigen::VectorXf pfh_histogram(125);
 		pfh.computePointPFHSignature(*pointCloudPtr, *normalPtr, _indices, nr_split, pfh_histogram);
 		pfh_histogramVec.push_back(pfh_histogram);
@@ -1322,13 +1342,23 @@ getNeighbors(
 				cout << "Find none neighbor for " << index << "th" << endl;
 				setTextWhite();
 			}
+			//if (maxNum<float>(distanceTemp) > r) {
+			//	setTextYellow();
+			//	cout << "距离过远，采用半径搜索" << endl;
+			//	setTextWhite();
+			//	if (kdTree.radiusSearch(pointCloudPtr->at(index), r, indecesTemp, distanceTemp) <= 0) {
+			//		setTextYellow();
+			//		cout << "Find none neighbor for " << index << "th" << endl;
+			//		setTextWhite();
+			//	}
+			//}
 		}
 		else {
 			if (kdTree.radiusSearch(pointCloudPtr->at(index), r, indecesTemp, distanceTemp) <= 0) {
 				setTextYellow();
 				cout << "Find none neighbor for " << index << "th" << endl;
 				setTextWhite();
-			}
+			}	
 		}
 		neighborsIndices.push_back(indecesTemp);
 	}
@@ -1380,6 +1410,14 @@ plotHistogram(
 	return 0;
 }
 
+
+/**
+ * @brief PCA算法降维，对矩阵的列维度进行降维
+ * @param origin		需要降维的矩阵
+ * @param kStart		降维到k维
+ * @param error			丢失率阈值，当降到k维不满足丢失率要求时提升维度
+ * @return 
+*/
 Eigen::MatrixXf
 PCA(
 	Eigen::MatrixXf origin,
@@ -1416,3 +1454,78 @@ PCA(
 	//cout << "result:\n" << result;
 	return result;
 }
+
+int SeparateView(
+	const cloud::PointCloudPtr inPointCloudPtr,
+	cloud::PointCloudPtr& out,
+	float angle,
+	bool negative)
+{
+	float cosineLimit = cos(angle/180.0f*3.1416);
+	Eigen::Vector3f z(0, 0, 1);
+	Eigen::Vector3f pVec;
+	float cosine;
+	out->clear();
+	for (auto& _point : *inPointCloudPtr) {
+		pVec(0) = _point.x;
+		pVec(1) = _point.y;
+		pVec(2) = _point.z;
+		pVec.normalize();
+		cosine = pVec.dot(z);
+
+		//修改
+		if ((cosine > cosineLimit && !negative) || (cosine < cosineLimit && negative)) {
+			cloud::PointT newP;
+			newP.x = _point.x;
+			newP.y = _point.y;
+			newP.z = _point.z;
+			out->push_back(newP);
+		}
+	}
+	return 0;
+}
+
+
+int SeparateBG(
+	const cloud::PointCloudPtr inPointCloudPtr,
+	cloud::PointCloudPtr& out)
+{
+	bool show = true;
+	cloud::PointCloudPtr _temp(new cloud::PointCloud);
+	if (show) cout << "距离滤波" << endl;
+	pcl::copyPointCloud<cloud::PointT, cloud::PointT>(*inPointCloudPtr, *out);
+	pcl::PassThrough<pcl::PointXYZ> pass;
+	pass.setFilterFieldName("z");
+	pass.setFilterLimits(0.25, 0.6);
+	pass.setInputCloud(out);
+	pass.filter(*out);
+	pass.setFilterFieldName("x");
+	pass.setFilterLimits(-0.25, 0.25);
+	pass.setInputCloud(out);
+	pass.filter(*out);
+	if (show) visualizePointCloud(out);
+
+	if (show) cout << "平面分割" << endl;
+	planeSegmentation(0.02, out, _temp, true);
+	pcl::copyPointCloud(*_temp, *out);
+	if (show) visualizePointCloud(out);
+
+	if (show) cout << "离群点消除" << endl;
+	SeparateView(out, _temp, 20);
+	pcl::copyPointCloud(*_temp, *out);
+	pcl::RadiusOutlierRemoval<pcl::PointXYZ> outrem;
+	outrem.setRadiusSearch(0.03);
+	outrem.setMinNeighborsInRadius(400);
+	outrem.setKeepOrganized(false);
+	outrem.setInputCloud(out);
+	outrem.filter(*out);
+	outrem.setRadiusSearch(0.005);
+	outrem.setMinNeighborsInRadius(5);
+	outrem.setKeepOrganized(false);
+	outrem.setInputCloud(out);
+	outrem.filter(*out);
+	if (show) visualizePointCloud(out);
+
+	return 0;
+}
+

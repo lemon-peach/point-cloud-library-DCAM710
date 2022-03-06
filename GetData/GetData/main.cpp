@@ -4,11 +4,11 @@
 
 int main(int argc, char* argv[]) {
 	//相机打开
-	string fp;
-	cout << "Please input save path(0 for default)" << endl;
-	cout << "\\ for split" << endl;
-	cin >> fp;
-	if (fp == "0") fp = ".\\PCD";
+	string fp("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\自建数据\\原始PCD");
+	//cout << "Please input save path(0 for default)" << endl;
+	//cout << "\\ for split" << endl;
+	//cin >> fp;
+	//if (fp == "0") fp = ".\\PCD";
 
 	_finddata_t fileInfo;
 	intptr_t handle;

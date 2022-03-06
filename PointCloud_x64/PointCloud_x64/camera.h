@@ -123,4 +123,9 @@ int saveRealTimePointClouds(
 	bool showDepthImage = true,
 	bool showRGBImage = true,
 	bool auto_save = true);
+
+int calcWeight(
+	vector<vector<int>> postionVec,
+	vector<int> pos,
+	vector<float>& weight);
 #endif // __MAIN_H__

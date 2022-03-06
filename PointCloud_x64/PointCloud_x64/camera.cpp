@@ -22,13 +22,13 @@ void Opencv_Depth(uint32_t slope, int height, int width, uint8_t* pData, cv::Mat
 #endif
 	dispImg.convertTo(dispImg, CV_8U, 255.0 / slope);
 	applyColorMap(dispImg, dispImg, cv::COLORMAP_RAINBOW);
-	int color;
-	if (val > 2500)
-		color = 0;
-	else
-		color = 4096;
-	circle(dispImg, pointxy, 4, cv::Scalar(color, color, color), -1, 8, 0);
-	putText(dispImg, text, pointxy, cv::FONT_HERSHEY_DUPLEX, 2, cv::Scalar(color, color, color));
+	//int color;
+	//if (val > 2500)
+	//	color = 0;
+	//else
+	//	color = 4096;
+	//circle(dispImg, pointxy, 4, cv::Scalar(color, color, color), -1, 8, 0);
+	//putText(dispImg, text, pointxy, cv::FONT_HERSHEY_DUPLEX, 2, cv::Scalar(color, color, color));
 }
 
 /**
@@ -144,6 +144,12 @@ int openAndConfigCamera(PsDeviceHandle& deviceHandle, uint32_t sessionIndex, PsW
 	//获取输出数据模式
 	PsDataMode dataMode = PsDataMode::PsDepthAndRGB_30;
 	Ps2_GetDataMode(deviceHandle, sessionIndex, &dataMode);
+
+	bool jibian;
+	Ps2_SetDepthDistortionCorrectionEnabled(deviceHandle, sessionIndex, true);
+	Ps2_GetDepthDistortionCorrectionEnabled(deviceHandle, sessionIndex, &jibian);
+	if (jibian)cout << "畸变校正" << endl;
+	else cout << "无几遍校正" << endl;
 
 	//设置输出数据模式
 	if (b_WDRMode || setDataMode != PsDataMode::PsWDR_Depth) {
@@ -305,9 +311,170 @@ getRealTimePointClouds(
 				if (showDepthImage) {
 					Opencv_Depth(slope.slope1, depthFrame.height, depthFrame.width, depthFrame.pFrameData, imageMat);
 					cv::imshow("实时深度图像", imageMat);
+					/*cv::Mat _testImg = cv::Mat(depthFrame.height, depthFrame.width, CV_16UC1, depthFrame.pFrameData);
+					//cv::imshow("test", _dispImg);
+					vector<int> weight;
+					weight.resize(4);
+					vector<vector<int>> neighborPixle;
+					neighborPixle.resize(4);
+					cv::Point2d pointxy(0, 0);
+					for (auto& _v : neighborPixle) {
+						_v.resize(2);
+					}
+					//cout << "image rows: " << _testImg.rows << endl;
+					//cout << "image cols: " << _testImg.cols << endl;
+					//cout << "(0,0): " << _testImg.at<ushort>(0, 0) << endl;
+					//cout << "eeeee" << endl;
+					for (int _row = 0; _row < _testImg.rows; ++_row) {
+						for (int _col = 0; _col < _testImg.cols; ++_col) {
+							//cout << "(row, col): " << _row << ", " << _col << endl;
+							if (_testImg.at<ushort>(_row, _col) == 0 || _testImg.at<ushort>(_row, _col) == 65535) {
+								//cout << "pixel == 0" << endl;
+								int _r = _row;
+								int _c = _col - 1;
+								while (_c >= 0 && _r >= 0 && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
+									--_c;
+								}
+								neighborPixle[0][0] = _r;
+								neighborPixle[0][1] = _c;
+								_r = _row - 1;
+								_c = _col;
+								while (_c >= 0 && _r >= 0 && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
+									--_r;
+								}
+								neighborPixle[1][0] = _r;
+								neighborPixle[1][1] = _c;
+								_r = _row;
+								_c = _col + 1;
+								while (_c < _testImg.cols && _r < _testImg.rows && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
+									++_c;
+								}
+								if (_c < _testImg.cols && _r < _testImg.rows) {
+									neighborPixle[2][0] = _r;
+									neighborPixle[2][1] = _c;
+								}
+								else {
+									neighborPixle[2][0] = -1;
+									neighborPixle[2][1] = -1;
+								}
+								_r = _row + 1;
+								_c = _col;
+								while (_c < _testImg.cols && _r < _testImg.rows && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
+									++_r;
+								}
+								if (_c < _testImg.cols && _r < _testImg.rows) {
+									neighborPixle[3][0] = _r;
+									neighborPixle[3][1] = _c;
+								}
+								else {
+									neighborPixle[3][0] = -1;
+									neighborPixle[3][1] = -1;
+								}
+								vector<float> weight;
+								float __temp = 0;
+								calcWeight(neighborPixle, { _row, _col }, weight);
+								for (int _index = 0; _index < neighborPixle.size(); ++_index) {
+									if (weight[_index] != 0) {
+										//cout << neighborPixle[_index][0]<<", "<<neighborPixle[_index][1] << endl;
+										__temp += weight[_index] * _testImg.at<ushort>(neighborPixle[_index][0], neighborPixle[_index][1]);
+									}
+								}
+								_testImg.at<ushort>(_row, _col) = (uint16_t)__temp;
+							}
+						}
+					}
+					//for (int _row = 0; _row < _testImg.rows; ++_row) {
+					//	for (int _col = 0; _col < _testImg.cols; ++_col) {
+					//		int _pos = _row * _testImg.cols + _col;
+					//		ushort _val = _testImg.at<ushort>(_row, _col);
+					//		*(depthFrame.pFrameData + _pos * 2 + 1) = (uint8_t)(_val & 0x0f);
+					//		*(depthFrame.pFrameData + _pos * 2) = (uint8_t)(_val >> 8 & 0x0f);
+					//	}
+					//}
+					_testImg.convertTo(_testImg, CV_8U, 255.0 / slope.slope1);
+					applyColorMap(_testImg, _testImg, cv::COLORMAP_RAINBOW);
+					cv::imshow("test", _testImg);
+					cv::Mat _testImg2 = cv::Mat(depthFrame.height, depthFrame.width, CV_16UC1, depthFrame.pFrameData);
+					_testImg2.convertTo(_testImg2, CV_8U, 255.0 / slope.slope1);
+					applyColorMap(_testImg2, _testImg2, cv::COLORMAP_RAINBOW);
+					cv::imshow("test2", _testImg2);
+					cout << "num: "<<_testImg.total() << endl;
+					cout << "press any continue" << endl;
+					cv::waitKey();*/
 				}
 				//开始保存
 				if (saveStart && (Index % interval == 1 || !auto_update)) {
+					cout << "save===========================" << endl;
+
+					cv::Mat _testImg = cv::Mat(depthFrame.height, depthFrame.width, CV_16UC1, depthFrame.pFrameData);
+					vector<int> weight;
+					weight.resize(4);
+					vector<vector<int>> neighborPixle;
+					neighborPixle.resize(4);
+					cv::Point2d pointxy(0, 0);
+					for (auto& _v : neighborPixle) {
+						_v.resize(2);
+					}
+					for (int _row = 0; _row < _testImg.rows; ++_row) {
+						for (int _col = 0; _col < _testImg.cols; ++_col) {
+							if (_testImg.at<ushort>(_row, _col) == 0 || _testImg.at<ushort>(_row, _col) == 65535) {
+								int _r = _row;
+								int _c = _col - 1;
+								while (_c >= 0 && _r >= 0 && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
+									--_c;
+								}
+								neighborPixle[0][0] = _r;
+								neighborPixle[0][1] = _c;
+								_r = _row - 1;
+								_c = _col;
+								while (_c >= 0 && _r >= 0 && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
+									--_r;
+								}
+								neighborPixle[1][0] = _r;
+								neighborPixle[1][1] = _c;
+								_r = _row;
+								_c = _col + 1;
+								while (_c < _testImg.cols && _r < _testImg.rows && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
+									++_c;
+								}
+								if (_c < _testImg.cols && _r < _testImg.rows) {
+									neighborPixle[2][0] = _r;
+									neighborPixle[2][1] = _c;
+								}
+								else {
+									neighborPixle[2][0] = -1;
+									neighborPixle[2][1] = -1;
+								}
+								_r = _row + 1;
+								_c = _col;
+								while (_c < _testImg.cols && _r < _testImg.rows && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
+									++_r;
+								}
+								if (_c < _testImg.cols && _r < _testImg.rows) {
+									neighborPixle[3][0] = _r;
+									neighborPixle[3][1] = _c;
+								}
+								else {
+									neighborPixle[3][0] = -1;
+									neighborPixle[3][1] = -1;
+								}
+								vector<float> weight;
+								float __temp = 0;
+								calcWeight(neighborPixle, { _row, _col }, weight);
+								for (int _index = 0; _index < neighborPixle.size(); ++_index) {
+									if (weight[_index] != 0) {
+										//cout << neighborPixle[_index][0]<<", "<<neighborPixle[_index][1] << endl;
+										__temp += weight[_index] * _testImg.at<ushort>(neighborPixle[_index][0], neighborPixle[_index][1]);
+									}
+								}
+								_testImg.at<ushort>(_row, _col) = (uint16_t)__temp;
+							}
+						}
+					}
+					_testImg.convertTo(_testImg, CV_8U, 255.0 / slope.slope1);
+					applyColorMap(_testImg, _testImg, cv::COLORMAP_RAINBOW);
+					cv::imshow("空洞填补", _testImg);
+
 					len = depthFrame.width * depthFrame.height;
 					PsVector3f* pWorld = new PsVector3f[len];
 					Ps2_ConvertDepthFrameToWorldVector(deviceHandle, sessionIndex, depthFrame, pWorld);
@@ -422,5 +589,35 @@ int saveRealTimePointClouds(
 		cout << "\rsave point cloud: " << fixed << setprecision(0) << (((float)++index) / (float)pointCloudVec.size()) * 100.0 << "%";
 	}
 	cout << endl;
+	return 0;
+}
+
+int calcWeight(
+	vector<vector<int>> postionVec,
+	vector<int> pos,
+	vector<float>& weight)
+{
+	vector<float> _weightTemp;
+	_weightTemp.resize(postionVec.size());
+	weight.resize(postionVec.size());
+	float dis;
+	float e = 2.718281828459045;
+	float sum = 0.0;
+	for (int _index = 0; _index < postionVec.size(); ++_index) {
+		if (postionVec[_index][0] >= 0 && postionVec[_index][1] >= 0) {
+			dis = pow((float)(postionVec[_index][0] - pos[0]), 2.0) + pow((float)(postionVec[_index][1] - pos[1]), 2.0);			
+			_weightTemp[_index] = pow(e, dis * -0.5);
+			sum += _weightTemp[_index];
+		}
+		else {
+			_weightTemp[_index] = 0.0;
+			//cout << "weight: " << _index << ", " << _weightTemp[_index] << endl;
+		}
+	}
+	if (sum != 0) {
+		for (int _index = 0; _index < _weightTemp.size(); ++_index) {
+			weight[_index] = _weightTemp[_index] / sum;
+		}
+	}
 	return 0;
 }

@@ -21,4 +21,24 @@ void setTextYellow();
 void setTextWhite();
 
 void setTextColor(int16_t color);
+
+template<typename T>
+T maxNum(vector<T> vec) {
+	T result;
+	result = vec[0];
+	for (auto& num : vec) {
+		if (result < num) result = num;
+	}
+	return result;
+}
+
+template<typename T>
+T minNum(vector<T> vec) {
+	T result;
+	result = vec[0];
+	for (auto& num : vec) {
+		if (result > num) result = num;
+	}
+	return result;
+}
 #endif

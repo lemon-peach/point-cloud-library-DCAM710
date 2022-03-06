@@ -23,6 +23,7 @@
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/fast_bilateral.h>
+#include <pcl/filters/passthrough.h>
 #include <pcl/range_image/range_image.h>
 #include <pcl/visualization/range_image_visualizer.h>
 #include <pcl/keypoints/narf_keypoint.h>
@@ -49,12 +50,24 @@ namespace cloud{
 	using PointCloudNormal = pcl::PointCloud<PointNormalT>;
 	using PointCloudNormalPtr = PointCloudNormal::Ptr;
 
-	using PointCloudVec = vector<PointCloud, Eigen::aligned_allocator<PointT>>;
-	using PointCloudPtrVec = vector<PointCloudPtr, Eigen::aligned_allocator<PointT>>;
+	//using PointCloudVec = vector<PointCloud, Eigen::aligned_allocator<PointT>>;
+	//using PointCloudPtrVec = vector<PointCloudPtr, Eigen::aligned_allocator<PointT>>;
+	using PointCloudVec = vector<PointCloud>;
+	using PointCloudPtrVec = vector<PointCloudPtr>;
 
 	typedef struct {
 		double r, g, b;
 	}Color;
+
+	//Color redPoint = { 255.0, 0.0, 0.0 };
+	//Color greenPoint = { 0.0, 255.0, 0.0 };
+	//Color bluePoint = { 0.0, 0.0, 255.0 };
+	//Color yellowPoint = { 255.0, 255.0, 0.0 };
+	//Color purplePoint = { 255.0, 0.0, 255.0 };
+	//Color cyanPoint = { 255.0, 0.0, 255.0 };
+	//Color whitePoint = { 255.0, 255.0, 255.0 };
+	//vector<Color> colorVec = { redPoint, greenPoint, bluePoint, yellowPoint, purplePoint, cyanPoint };
+	//vector<Color> colorWhiteVec = { whitePoint };
 
 	//struct PointNormalPfhT {
 	//	union
@@ -545,3 +558,78 @@ PCA(
 
 
 /********************************** µœ÷*************************************/
+/**
+ * @brief
+ * @tparam PointT
+ * @param pointCloudPtrVec
+ * @param basePath
+ * @param nameVec
+ * @param prefix
+ * @param suffix
+ * @return
+*/
+template<typename PointT>
+inline int savePointPCDs(
+	vector<typename pcl::PointCloud<PointT>::Ptr>& pointCloudPtrVec,
+	string basePath,
+	vector<string> nameVec,
+	string prefix,
+	string suffix)
+{
+	for (int _i = 0; _i < pointCloudPtrVec.size(); ++_i) {
+		string path(basePath);
+		path.append("\\");
+		path.append(prefix);
+		path.append(nameVec[_i]);
+		path.append(suffix);
+		path.append(".pcd");
+		pcl::io::savePCDFileASCII<PointT>(path, *(pointCloudPtrVec[_i]));
+	}
+	return 0;
+}
+
+template<typename PointT>
+inline int savePointPCDs(
+	vector<typename pcl::PointCloud<PointT>::Ptr>& pointCloudPtrVec,
+	string basePath,
+	string prefix,
+	string suffix)
+{
+	vector<string> nameVec;
+	for (int _i = 0; _i < pointCloudPtrVec.size(); ++_i) {
+		nameVec.push_back(to_string(_i));
+	}
+	savePointPCDs<PointT>(pointCloudPtrVec, basePath, nameVec, prefix, suffix);
+	return 0;
+}
+
+template<typename PointT>
+inline int loadPointPcds(
+	vector<typename pcl::PointCloud<PointT>::Ptr>& pointCloudPtrVec,
+	string basePath)
+{
+	vector<string> files;
+	getFiles(basePath, files, "pcd", true);
+	for (auto& _file : files) {
+		typename pcl::PointCloud<PointT>::Ptr _temp;
+		pcl::io::loadPCDFile(_file, *_temp);
+		pointCloudPtrVec.push_back(_temp);
+	}
+	return 0;
+}
+
+/**
+ * @brief ∑÷¿Î±≥æ∞
+ * @param inPointCloudPtr 
+ * @param out 
+ * @return 
+*/
+int SeparateBG(
+	const cloud::PointCloudPtr inPointCloudPtr,
+	cloud::PointCloudPtr& out);
+
+int SeparateView(
+	const cloud::PointCloudPtr inPointCloudPtr,
+	cloud::PointCloudPtr& out,
+	float angle = 45,
+	bool negative = false);
