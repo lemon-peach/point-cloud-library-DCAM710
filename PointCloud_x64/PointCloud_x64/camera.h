@@ -11,6 +11,7 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl/visualization/cloud_viewer.h>
+#include "function.h"
 using namespace std;
 
 typedef struct {
@@ -128,4 +129,11 @@ int calcWeight(
 	vector<vector<int>> postionVec,
 	vector<int> pos,
 	vector<float>& weight);
+
+void depthToPointCloud(
+	const cv::Mat& image,
+	pcl::PointCloud<pcl::PointXYZ>::Ptr& pointCloudPtr,
+	float f,
+	float dx,
+	float dy);
 #endif // __MAIN_H__

@@ -1,16 +1,46 @@
 #pragma warning
+#define PCL_NO_PRECOMPILE
+#include <pcl/point_types.h>
+struct EIGEN_ALIGN16 PointNormalPfhTp
+{
+	PCL_ADD_POINT4D;                  // preferred way of adding a XYZ+padding
+	float data_n;
+	inline PointNormalPfhTp(float _x, float _y, float _z, float _data_n) {
+		x = _x;
+		y = _y;
+		z = _z;
+		data[3] = 0;
+		data_n = _data_n;
+	}
+	inline PointNormalPfhTp() :PointNormalPfhTp(0.0f, 0.0f, 0.0f, 0.0f) {};
+	inline PointNormalPfhTp(const PointNormalPfhTp& _p) :PointNormalPfhTp(_p.x, _p.y, _p.z, _p.data_n) {};
+	friend std::ostream& operator <<(std::ostream os, PointNormalPfhTp& p) {
+		return os;
+	}
+	PCL_MAKE_ALIGNED_OPERATOR_NEW     // make sure our new allocators are aligned
+};                   // enforce SSE padding for correct memory alignment
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(PointNormalPfhTp,           // here we assume a XYZ + "test" (as fields)
+	(float, x, x)
+	(float, y, y)
+	(float, z, z)
+	(float, data_n, data_n)
+);
 #include <iostream>
 #include <pcl/io/io.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/visualization/cloud_viewer.h>
 #include <pcl/io/ply_io.h>
-#include <pcl/point_types.h>
 #include <pcl/filters/passthrough.h>
 #include <opencv2/imgproc/imgproc_c.h>
 #include "camera.h"
 #include "cloudOperation.h"
 #include "function.h"
 #include <string>
+#include <ctime>
+#include <pcl/kdtree/impl/io.hpp>
+#include <pcl/kdtree/impl/kdtree_flann.hpp>
+#include <pcl/search/impl/kdtree.hpp>
 
 using namespace std;
 bool showRGBImage = true;
@@ -23,9 +53,18 @@ cloud::Color greenPoint = { 0.0, 255.0, 0.0 };
 cloud::Color bluePoint = { 0.0, 0.0, 255.0 };
 cloud::Color yellowPoint = { 255.0, 255.0, 0.0 };
 cloud::Color purplePoint = { 255.0, 0.0, 255.0 };
-cloud::Color cyanPoint = { 255.0, 0.0, 255.0 };
+cloud::Color cyanPoint = { 0.0, 255.0, 255.0 };
 cloud::Color whitePoint = { 255.0, 255.0, 255.0 };
-vector<cloud::Color> colorVec = {redPoint, greenPoint, bluePoint, yellowPoint, purplePoint, cyanPoint};
+cloud::Color color1 = { 200,50,0 };
+cloud::Color color2 = { 150,100,0 };
+cloud::Color color3 = { 100,150,0 };
+cloud::Color color4 = { 50,200,0 };
+cloud::Color color5 = { 0,200,50 };
+cloud::Color color6 = { 0,150,100 };
+cloud::Color color7 = { 0,100,150 };
+cloud::Color color8 = { 0,50,200 };
+vector<cloud::Color> colorVec = { redPoint, greenPoint, bluePoint, yellowPoint, purplePoint, cyanPoint, 
+									color1,color2,color3,color4,color5,color6,color7,color8 };
 vector<cloud::Color> colorWhiteVec = { whitePoint };
 
 int vzense_test();
@@ -37,8 +76,11 @@ void viewerOneOff(pcl::visualization::PCLVisualizer& viewer) {
 int process();
 int test();
 int registerWithKeypoint();
-int mode = 2;
+int mode = 0;
 int num = 2;
+bool showCloud = false;
+clock_t startTime, endTime;
+double useTime;
 
 int main() {
 	/*int key;
@@ -137,31 +179,39 @@ int main() {
 	//string filePath = "D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\PCL官方数据\\data\\tutorials\\template_alignment";
 	//string path = "D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\bunny\\data";
 	//string path = "D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\PCL官方数据\\data\\tutorials\\pairwise";
-	string passPath("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\自建数据\\pass");
-	string keypointPath("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\自建数据\\keypoint");
-	string normalPath("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\自建数据\\normal");
-	string separatePath("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\自建数据\\separate");
+	cout << "input mode 0,1,2" << endl;
+	cin >> mode;
+	cout << "input num(0 for all)" << endl;
+	cin >> num;
+	string passPath("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\程序生成数据\\pass");
+	string keypointPath("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\程序生成数据\\keypoint");
+	string normalPath("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\程序生成数据\\normal");
+	//string separatePath("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\程序生成数据\\separate");
+	string separatePath("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\程序生成数据\\配准");
 	vector<string> files;
 	string path;
 	//if (mode == 0) path = "D:\\剑走偏锋\\毕设\\硕士\\工程\\GetData\\GetData\\PCD";
 	//else path = "D:\\剑走偏锋\\毕设\\硕士\\工程\\PointCloud_x64\\PointCloud_x64\\pass";
-	if (mode == 0) path = "D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\自建数据\\原始PCD";
-	else path = "D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\自建数据\\pass";
+	if (mode == 0) path = "D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\程序生成数据\\原始PCD";
+	else path = "D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\程序生成数据\\pass";
 	cloud::PointCloudPtrVec pointCloudPtrVec;
 	getFiles(path, files, "pcd", true);
+	if (num == 0)num = files.size();
 	vector<int> pointCloudIndexVec({ 0,1 });
-	int rows = 480;
-	int cols = 640;
+	int rows = 1080;
+	int cols = 1920;
 
-	cout << "读取PCD文件" << endl;
-	for (int _index = 0; _index < num; ++_index) {
-		cloud::PointCloudPtr _temp(new cloud::PointCloud);
-		pcl::io::loadPCDFile(files[pointCloudIndexVec[_index]], *_temp);
-		_temp->width = 640;
-		_temp->height = 480;
-		pointCloudPtrVec.push_back(_temp);
+	if (mode == 0 || mode == 1) {
+		cout << "读取PCD文件" << endl;
+		for (int _index = 0; _index < num; ++_index) {
+			cloud::PointCloudPtr _temp(new cloud::PointCloud);
+			pcl::io::loadPCDFile(files[_index], *_temp);
+			//_temp->width = 1920;
+			//_temp->height = 1080;
+			pointCloudPtrVec.push_back(_temp);
+		}
 	}
-	visualizePointCloud(pointCloudPtrVec, colorVec);
+	//visualizePointCloud(pointCloudPtrVec, colorVec);
 	//cout << "背景分离" << endl;
 	//cloud::PointCloudPtrVec objectPointCloudPtrVec;
 	//objectPointCloudPtrVec.resize(pointCloudPtrVec.size());
@@ -182,7 +232,7 @@ int main() {
 			pass.setInputCloud(_pointCloudPtr);
 			pass.filter(*_pointCloudPtr);
 		}
-		visualizePointCloud(pointCloudPtrVec, colorVec);
+		if (showCloud)visualizePointCloud(pointCloudPtrVec, colorVec);		
 		//vector<pcl::PointCloud<cloud::PointT>::Ptr> a;
 		cout << "存储距离滤波后点云数据" << endl;
 		savePointPCDs<cloud::PointT>(
@@ -193,21 +243,23 @@ int main() {
 
 		cout << "计算range image" << endl;
 		//int index = 2;
+		
 		vector<pcl::RangeImage::Ptr> rangeImagePtrVec;
 		for (auto _pointCloudPtr : pointCloudPtrVec) {
 			pcl::RangeImage::Ptr rangeImagePtr(new pcl::RangeImage());
 			getRangeImage(_pointCloudPtr, rangeImagePtr, 0.3f);
 			rangeImagePtrVec.push_back(rangeImagePtr);
 		}
-		for (auto& _rangeImagePtr : rangeImagePtrVec) {
-			pcl::visualization::RangeImageVisualizer rangeImageViewer("range image");
-			rangeImageViewer.showRangeImage(*_rangeImagePtr);
-			while (!rangeImageViewer.wasStopped())
-			{
-				rangeImageViewer.spinOnce(20);
-			}
-		}
+		//for (auto& _rangeImagePtr : rangeImagePtrVec) {
+		//	pcl::visualization::RangeImageVisualizer rangeImageViewer("range image");
+		//	rangeImageViewer.showRangeImage(*_rangeImagePtr);
+		//	while (!rangeImageViewer.wasStopped())
+		//	{
+		//		rangeImageViewer.spinOnce(20);
+		//	}
+		//}
 		cout << "提取NARF关键点" << endl;
+		startTime = clock();
 		vector<vector<int>> keyPointsIndicesVec;
 		cloud::PointCloudPtrVec keyPointPtrVec;
 		pcl::ExtractIndices<pcl::PointXYZ> extract;
@@ -225,13 +277,16 @@ int main() {
 			keyPointPtrVec.push_back(_keyPointPtr);
 			cout << "\r" << "NARF: " << (float)i / (float)pointCloudPtrVec.size() * 100 << "%";
 		}
+		endTime = clock();
+		useTime = (double)(endTime - startTime) / CLOCKS_PER_SEC;
+		cout << "关键点提取用时: " << useTime << "s" << endl;
 		cout << endl;
-		for (int i = 0; i < pointCloudPtrVec.size(); ++i) {
-			cloud::PointCloudPtrVec _viewerPointCloudPtrVec = { pointCloudPtrVec[i], keyPointPtrVec[i] };
-			visualizePointCloud(_viewerPointCloudPtrVec, colorVec, { 1, 4 });
+		if (showCloud) {
+			for (int i = 0; i < pointCloudPtrVec.size(); ++i) {
+				cloud::PointCloudPtrVec _viewerPointCloudPtrVec = { pointCloudPtrVec[i], keyPointPtrVec[i] };
+				visualizePointCloud(_viewerPointCloudPtrVec, colorVec, { 1, 4 });
+			}
 		}
-		cout << "key point1: " << keyPointPtrVec[0]->size() << endl;
-		cout << "key point2: " << keyPointPtrVec[1]->size() << endl;
 
 		cout << "存储关键点索引" << endl;
 		vector<pcl::PointCloud<pcl::PointXYZRGBA>::Ptr> keyIndicesSavePtrVec;
@@ -263,6 +318,9 @@ int main() {
 			normalPath,
 			"normal",
 			"");
+		for (auto& _temp : NormalPtrVec) {
+			_temp->clear();
+		}
 
 		cout << "背景分离" << endl;
 		cloud::PointCloudPtrVec objectPointCloudPtrVec;
@@ -272,7 +330,7 @@ int main() {
 			SeparateBG(pointCloudPtrVec[_index], _temp);
 			objectPointCloudPtrVec[_index] = _temp;
 		}
-		visualizePointCloud(objectPointCloudPtrVec, colorVec);
+		if (showCloud)visualizePointCloud(objectPointCloudPtrVec, colorVec);		
 		cout << "存储背景分离点云数据" << endl;
 		savePointPCDs<cloud::PointT>(
 			objectPointCloudPtrVec,
@@ -280,7 +338,7 @@ int main() {
 			"separate",
 			"");
 	}
-	else if (mode == 1){
+	else if (mode == 1){/*
 		cout << "加载背景分离点云数据" << endl;
 		vector<string> separateFiles;
 		getFiles(separatePath, separateFiles, "pcd", true);
@@ -322,15 +380,18 @@ int main() {
 				}
 				kdTreeIndicesTemp.clear();
 				kdTreeDisTemp.clear();
+
+				_indices.push_back(_point.points[_index].rgba);
 			}
-			if (_i == 0) {
-				vector<int>::iterator _iterL = _indices.begin() + 10;
-				vector<int>::iterator _iterR = _indices.end();
-				_indices.erase(_iterL, _iterR);
-				_iterL = _indices.begin() + 6;
-				_iterR = _indices.end() - 1;
-				_indices.erase(_iterL, _iterR);
-			}
+			//手动去除关键点
+			//if (_i == 0) {
+			//	vector<int>::iterator _iterL = _indices.begin() + 10;
+			//	vector<int>::iterator _iterR = _indices.end();
+			//	_indices.erase(_iterL, _iterR);
+			//	_iterL = _indices.begin() + 6;
+			//	_iterR = _indices.end() - 1;
+			//	_indices.erase(_iterL, _iterR);
+			//}
 			pointIndicesPtr->indices = _indices;
 			extract.setInputCloud(pointCloudPtrVec[_i]);
 			extract.setIndices(pointIndicesPtr);
@@ -360,11 +421,12 @@ int main() {
 		//		visualizePointCloud(_viewerPointCloudPtrVec, colorVec, { 1, 4 });
 		//	}
 		//}
-		for (int i = 0; i < pointCloudPtrVec.size(); ++i) {
-			cloud::PointCloudPtrVec _viewerPointCloudPtrVec = { objectPointCloudPtrVec[i], keyPointPtrVec[i] };
-			visualizePointCloud(_viewerPointCloudPtrVec, colorVec, { 1, 4 });
+		if (showCloud) {
+			for (int i = 0; i < pointCloudPtrVec.size(); ++i) {
+				cloud::PointCloudPtrVec _viewerPointCloudPtrVec = { objectPointCloudPtrVec[i], keyPointPtrVec[i] };
+				visualizePointCloud(_viewerPointCloudPtrVec, colorVec, { 1, 4 });
+			}
 		}
-
 
 		////cloud::PointCloudNormalPtr cloudNormalPtr(new cloud::PointCloudNormal);
 		////cloud::PointCloudPtr keyPointCloudPtr(new cloud::PointCloud);
@@ -437,13 +499,15 @@ int main() {
 			pairPoints[i] = { _temp, _temp2 };
 		}
 
-		cout << "进行配准的点云" << endl;
-		cloud::PointCloudPtr _viewer1(new cloud::PointCloud);
-		cloud::PointCloudPtr _viewer2(new cloud::PointCloud);
-		pcl::copyPointCloud<cloud::PointNormalPfhT, cloud::PointT>(*pairPoints[0][0], *_viewer1);
-		pcl::copyPointCloud<cloud::PointNormalPfhT, cloud::PointT>(*pairPoints[0][1], *_viewer2);
-		cloud::PointCloudPtrVec _viewerVec = { _viewer1,_viewer2 };
-		visualizePointCloud(_viewerVec, colorVec, { 3, 3 });
+		if (showCloud) {
+			cout << "进行配准的点云" << endl;
+			cloud::PointCloudPtr _viewer1(new cloud::PointCloud);
+			cloud::PointCloudPtr _viewer2(new cloud::PointCloud);
+			pcl::copyPointCloud<cloud::PointNormalPfhT, cloud::PointT>(*pairPoints[0][0], *_viewer1);
+			pcl::copyPointCloud<cloud::PointNormalPfhT, cloud::PointT>(*pairPoints[0][1], *_viewer2);
+			cloud::PointCloudPtrVec _viewerVec = { _viewer1,_viewer2 };
+			visualizePointCloud(_viewerVec, colorVec, { 3, 3 });
+		}
 		//for (int _i = 0; _i < 100; ++_i) {
 		//	cout << pairPoints[0][0]->at(_i).x << "\t";
 		//	cout << pairPoints[0][0]->at(_i).y << "\t";
@@ -460,31 +524,194 @@ int main() {
 		Eigen::Matrix4f trans;
 		pairAlignWithCustom(pairPoints[0][0], pairPoints[0][1], resCloudPtr, trans);
 		cloud::PointCloudPtr _transPtr(new cloud::PointCloud);
+		cloud::PointCloudPtr _transKeyPtr(new cloud::PointCloud);
 		pcl::transformPointCloud(*(objectPointCloudPtrVec[0]), *_transPtr, trans);
+		pcl::transformPointCloud(*(keyPointPtrVec[0]), *_transKeyPtr, trans);
 		
 		//pairAlignWithNormal(objectPointCloudPtrVec[0], objectPointCloudPtrVec[1], resCloudPtr, trans);
 		cloud::PointCloudPtrVec viewerPointPtrVec = { _transPtr, objectPointCloudPtrVec[1] };
+		cloud::PointCloudPtrVec viewerPointPtrVec2 = { _transKeyPtr, keyPointPtrVec[1] };
 		visualizePointCloud(viewerPointPtrVec, colorVec);
+		visualizePointCloud(viewerPointPtrVec2, colorVec, {1, 4});
+		*/
 	}
-	else {
+	else if (mode == 2) {
 		cout << "加载背景分离点云数据" << endl;
 		vector<string> separateFiles;
 		getFiles(separatePath, separateFiles, "pcd", true);
-		cout << "1" << endl;
 		cloud::PointCloudPtrVec objectPointCloudPtrVec;
-		for (int _i = 0; _i < separateFiles.size(); ++_i) {
-			cout << "i" << endl;
+		if (num == 0 || num > separateFiles.size())num = separateFiles.size();
+		for (int _i = 0; _i < num; ++_i) {
 			cloud::PointCloudPtr _temp(new cloud::PointCloud);
 			pcl::io::loadPCDFile(separateFiles[_i], *_temp);
+			cout << "load " << separateFiles[_i] << endl;
 			objectPointCloudPtrVec.push_back(_temp);
 		}
-
+		cloud::PointCloudPtrVec registeredVec;
+		registeredVec.resize(objectPointCloudPtrVec.size());
+		registeredVec[0] = objectPointCloudPtrVec[0];
+		vector<Eigen::Matrix4f> transformationVec;
+		transformationVec.resize(objectPointCloudPtrVec.size());
+		transformationVec[0] = Eigen::Matrix4f::Identity();
 		cout << "配准" << endl;
-		cloud::PointCloudPtr resCloudPtr(new cloud::PointCloud);
+		Eigen::Matrix4f transTemp;
+		Eigen::Matrix4f wholeTrans = Eigen::Matrix4f::Identity();
+		/*
+		for (int _i = 1; _i < objectPointCloudPtrVec.size(); ++_i) {
+			cout << "pairing " << _i - 1 << "th and " << _i << "th" << endl;
+			cloud::PointCloudPtr _resTemp(new cloud::PointCloud);
+			if (objectPointCloudPtrVec[_i]->size() <= objectPointCloudPtrVec[_i - 1]->size()) {
+				pairAlignWithNormal(
+					objectPointCloudPtrVec[_i],
+					objectPointCloudPtrVec[_i - 1],
+					_resTemp,
+					transformationVec[_i],
+					true,
+					0.005,
+					0.05,
+					true);
+				//visualizePointCloud({ objectPointCloudPtrVec[_i - 1], _resTemp }, colorVec);
+			}
+			else {
+				pairAlignWithNormal(
+					objectPointCloudPtrVec[_i - 1],
+					objectPointCloudPtrVec[_i],
+					_resTemp,
+					transTemp,
+					true,
+					0.005,
+					0.05,
+					true);
+				transformationVec[_i] = transTemp.inverse();
+				//visualizePointCloud({ objectPointCloudPtrVec[_i], _resTemp }, colorVec);
+			}
+		}
+		for (int _i = 1; _i < objectPointCloudPtrVec.size(); ++_i) {
+			wholeTrans *= transformationVec[_i];
+			cloud::PointCloudPtr _resTemp(new cloud::PointCloud);
+			pcl::transformPointCloud(*objectPointCloudPtrVec[_i], *_resTemp, wholeTrans);
+			//objectPointCloudPtrVec[_i] = _resTemp;
+			registeredVec[_i]=_resTemp;
+			//cout << _i << "th" << endl;
+			//visualizePointCloud(registeredVec, colorVec);
+		}
+		//visualizePointCloud(objectPointCloudPtrVec, colorVec);
+		savePointPCDs<cloud::PointT>(
+			registeredVec,
+			"D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\程序生成数据\\配准",
+			"",
+			"");
+		*/
+		for (int _i = 0; _i < objectPointCloudPtrVec.size();++_i) {
+			registeredVec[_i] = objectPointCloudPtrVec[_i];
+		}
+		int pairIndex1 = 0;
+		int pairIndex2 = 0;
+		for (int _i = registeredVec.size()-1; _i >0; --_i) {
+			pairIndex1 = _i;
+			pairIndex2 = _i + 1 - (_i + 1) / registeredVec.size() * registeredVec.size();
+			cout << "2pairing " << pairIndex1 << "th and " << pairIndex2 << "th" << endl;
+			cloud::PointCloudPtr _resTemp(new cloud::PointCloud);
+			if (registeredVec[pairIndex1]->size() <= registeredVec[pairIndex2]->size()) {
+				pairAlignWithNormal(
+					registeredVec[pairIndex1],
+					registeredVec[pairIndex2],
+					_resTemp,
+					transformationVec[pairIndex1],
+					true,
+					0.005,
+					0.05,
+					true);
+				registeredVec[pairIndex1] = _resTemp;
+				//visualizePointCloud({ objectPointCloudPtrVec[_i - 1], _resTemp }, colorVec);
+			}
+			else {
+				pairAlignWithNormal(
+					registeredVec[pairIndex2],
+					registeredVec[pairIndex1],
+					_resTemp,
+					transTemp,
+					true,
+					0.005,
+					0.05,
+					true);
+				transformationVec[pairIndex1] = transTemp.inverse();
+				pcl::transformPointCloud(*registeredVec[pairIndex1], *_resTemp, transformationVec[pairIndex1]);
+				registeredVec[pairIndex1] = _resTemp;
+				//visualizePointCloud({ objectPointCloudPtrVec[_i], _resTemp }, colorVec);
+			}
+		}
+		visualizePointCloud(registeredVec, colorVec);
+	}
+	else {
+		//cout << "加载背景分离点云数据" << endl;
+		//vector<string> separateFiles;
+		//getFiles(separatePath, separateFiles, "pcd", true);
+		//cloud::PointCloudPtrVec objectPointCloudPtrVec;
+		//if (num == 0 || num > separateFiles.size())num = separateFiles.size();
+		//for (int _i = 0; _i < num; ++_i) {
+		//	cloud::PointCloudPtr _temp(new cloud::PointCloud);
+		//	pcl::io::loadPCDFile(separateFiles[_i], *_temp);
+		//	cout << "load " << separateFiles[_i] << endl;
+		//	objectPointCloudPtrVec.push_back(_temp);
+		//}
+		class MyPointRepresentationNormal :public pcl::PointRepresentation<PointNormalPfhTp> {
+			using pcl::PointRepresentation<PointNormalPfhTp>::nr_dimensions_;
+		public:
+			using Ptr = shared_ptr<MyPointRepresentationNormal>;
+			MyPointRepresentationNormal() {
+				nr_dimensions_ = 4;
+			}
+			virtual void copyToFloatArray(const PointNormalPfhTp& p, float* out) const
+			{
+				out[0] = p.x;
+				out[1] = p.y;
+				out[2] = p.z;
+				out[3] = p.data_n;
+			}
+		};
+		pcl::PointCloud<PointNormalPfhTp>::Ptr srcPointCloud(new pcl::PointCloud<PointNormalPfhTp>);
+		pcl::PointCloud<PointNormalPfhTp>::Ptr tgtPointCloud(new pcl::PointCloud<PointNormalPfhTp>);
+		pcl::PointCloud<PointNormalPfhTp>::Ptr resPointCloud(new pcl::PointCloud<PointNormalPfhTp>);
+		//cloud::PointNormalPfhPtr srcPointCloud(new cloud::PointNormalPfh);
+		//cloud::PointNormalPfhPtr tgtPointCloud(new cloud::PointNormalPfh);
+		Eigen::Matrix4f transformation;
+		cloud::PointCloudPtr temp(new cloud::PointCloud);
+		randomCloud(temp, 10, 1);
+		srcPointCloud->resize(temp->size());
+		tgtPointCloud->resize(temp->size());
+		for (int _i = 0; _i < temp->size(); ++_i) {
+			srcPointCloud->at(_i).x = temp->at(_i).x;
+			srcPointCloud->at(_i).y = temp->at(_i).y;
+			srcPointCloud->at(_i).z = temp->at(_i).z;	
+			srcPointCloud->at(_i).data_n = (float)_i/10.0f;
+			tgtPointCloud->at(_i).x = temp->at(_i).x+0.5;
+			tgtPointCloud->at(_i).y = temp->at(_i).y+0.5;
+			tgtPointCloud->at(_i).z = temp->at(_i).z+0.2;
+			tgtPointCloud->at(_i).data_n = srcPointCloud->at(_i).data_n;
+		}
+		struct test {
+			float x;
+			float y;
+			float z;
+			float t;
+		};
+		MyPointRepresentationNormal::Ptr point_representation(new MyPointRepresentationNormal);
+		float alpha[4] = { 1.0, 1.0, 1.0, 1.0 };
+		point_representation->setRescaleValues(alpha);
+		pcl::search::KdTree<PointNormalPfhTp>::Ptr kdtree(new pcl::search::KdTree<PointNormalPfhTp>());
+		pcl::IterativeClosestPointNonLinear<PointNormalPfhTp, PointNormalPfhTp> icp_nl;  //实例 ICP 对象
+		icp_nl.setTransformationEpsilon(1e-6);  //设置两个临近变换的最大平方差
+		//icp_nl.setUseReciprocalCorrespondences(true);
+		icp_nl.setMaxCorrespondenceDistance(2);  //设置源点与目标点的最大匹配距离(米)
+		icp_nl.setPointRepresentation(point_representation);
+		icp_nl.setInputSource(srcPointCloud);
+		icp_nl.setInputTarget(tgtPointCloud);
 		Eigen::Matrix4f trans;
-		pairAlignWithNormal(objectPointCloudPtrVec[0], objectPointCloudPtrVec[1], resCloudPtr, trans, false);
-		cloud::PointCloudPtrVec viewerPointPtrVec = { resCloudPtr, objectPointCloudPtrVec[1] };
-		visualizePointCloud(viewerPointPtrVec, colorVec);
+		icp_nl.align(*resPointCloud);
+
+		//pcl::io::savePCDFileASCII<PointNormalPfhTp>("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\0.pcd", *srcPointCloud);
+		//pairAlignWithCustom(srcPointCloud, tgtPointCloud, resPointCloud, transformation);
 	}
 	//cout << "配准" << endl;
 	//cloud::PointCloudPtr resCloudPtr(new cloud::PointCloud);

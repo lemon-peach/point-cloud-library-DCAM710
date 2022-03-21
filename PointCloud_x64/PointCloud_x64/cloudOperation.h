@@ -1,9 +1,18 @@
 #pragma once
+//#define PCL_NO_PRECOMPILE
+#include <ctime>
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <vector>
 #include <iomanip>
+
+#include <pcl/memory.h>
+#include <pcl/pcl_macros.h>
+//#include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
+//#include <pcl/io/pcd_io.h>
+
 #include <pcl/ModelCoefficients.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/types.h>
@@ -15,10 +24,12 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/visualization/cloud_viewer.h>
 #include <pcl/visualization/pcl_visualizer.h>
-//#include <pcl/visualization/common/common.h>
+#include <pcl/visualization/common/common.h>
 #include <pcl/registration/icp.h>
+#include <pcl/registration/impl/icp.hpp>
 #include <pcl/features/normal_3d.h>
 #include <pcl/registration/icp_nl.h>
+#include <pcl/registration/impl/icp_nl.hpp>
 #include <pcl/surface/gp3.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/statistical_outlier_removal.h>
@@ -31,6 +42,7 @@
 #include <pcl/features/range_image_border_extractor.h>
 #include <pcl/surface/poisson.h>
 #include <pcl/features/pfh.h>
+#include <pcl/correspondence.h>
 #include <pcl/visualization/pcl_plotter.h>
 #include <Eigen/SVD>
 #include <Eigen/Core>
@@ -97,8 +109,8 @@ namespace cloud{
 	//		Eigen::VectorXf pfh;
 	//	};
 	//};
-
 	using PointNormalPfhT = pcl::PointNormal;
+	//using PointNormalPfhT = PointNormalPfhTp;
 	using PointNormalPfh = pcl::PointCloud<PointNormalPfhT>;
 	using PointNormalPfhPtr = PointNormalPfh::Ptr;
 	using PointNormalPfhPtrVec = vector<PointNormalPfhPtr, Eigen::aligned_allocator<PointNormalPfhT>>;
@@ -310,7 +322,10 @@ pairAlignWithNormal(
 	const cloud::PointCloudPtr& tgtCloudPtr, 
 	cloud::PointCloudPtr& resCloudPtr, 
 	Eigen::Matrix4f& final_transformation,
-	bool downSample = false);
+	bool downSample = false,
+	float downSampleSize = 0.005f,
+	float maxDis = 0.02,
+	bool useMyEm=false);
 
 /**
  * @brief		配准：计算源点云到目标点云的变换矩阵，根据点进行配准

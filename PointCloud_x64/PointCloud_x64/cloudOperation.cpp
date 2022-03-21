@@ -8,6 +8,144 @@ namespace cloud {
 	}
 }
 
+template <typename PointSource, typename PointTarget, typename Scalar = float>
+class MyCorrespondenceEstimation : public pcl::registration::CorrespondenceEstimation<PointSource, PointTarget, Scalar> {
+	//using pcl::registration::CorrespondenceEstimation<PointSource, PointTarget, Scalar>::
+	using pcl::registration::CorrespondenceEstimation<PointSource, PointTarget, Scalar>::initCompute;
+	using pcl::registration::CorrespondenceEstimation<PointSource, PointTarget, Scalar>::indices_;
+	using pcl::registration::CorrespondenceEstimation<PointSource, PointTarget, Scalar>::input_;
+	using pcl::registration::CorrespondenceEstimation<PointSource, PointTarget, Scalar>::target_;
+	using pcl::registration::CorrespondenceEstimation<PointSource, PointTarget, Scalar>::point_representation_;
+	using pcl::registration::CorrespondenceEstimation<PointSource, PointTarget, Scalar>::tree_;
+	using pcl::registration::CorrespondenceEstimation<PointSource, PointTarget, Scalar>::corr_name_;
+	using pcl::PCLBase<PointSource>::deinitCompute;
+public:
+	using Ptr = shared_ptr<MyCorrespondenceEstimation<PointSource, PointTarget, Scalar> >;
+	using ConstPtr = shared_ptr<const MyCorrespondenceEstimation<PointSource, PointTarget, Scalar> >;
+	//using pcl::registration::CorrespondenceEstimation<PointSource, PointTarget, Scalar>::input_;
+	//using pcl::registration::CorrespondenceEstimation<PointSource, PointTarget, Scalar>::target_;
+protected:
+	vector<float> weight;
+public:
+	MyCorrespondenceEstimation()
+	{
+		corr_name_ = "MyCorrespondenceEstimation";
+	}
+
+	void
+		determineCorrespondences(pcl::Correspondences& correspondences,
+			double max_distance = std::numeric_limits<double>::max()) override;
+	void setWeight(vector<float> _weight);
+};
+template <typename PointSource, typename PointTarget, typename Scalar> void
+MyCorrespondenceEstimation<PointSource, PointTarget, Scalar>::determineCorrespondences(
+	pcl::Correspondences& correspondences, 
+	double max_distance) 
+{
+	if (!initCompute())
+		return;
+	double max_dist_sqr = max_distance * max_distance;
+	correspondences.resize(indices_->size());
+
+	std::vector<int> index;
+	std::vector<float> distance;
+	pcl::Correspondence corr;
+	unsigned int nr_valid_correspondences = 0;
+
+	cloud::PointCloudPtr inputXYZ(new cloud::PointCloud);
+	pcl::copyPointCloud<PointSource, pcl::PointXYZ>(*input_, *inputXYZ);
+	cloud::PointCloudPtr targetXYZ(new cloud::PointCloud);
+	pcl::copyPointCloud<PointSource, pcl::PointXYZ>(*target_, *targetXYZ);
+	pcl::KdTreeFLANN<pcl::PointXYZ> treeXYZ;
+	treeXYZ.setInputCloud(targetXYZ);
+
+	int __index = 0;
+	float __val = -1.0;
+	int numDimensions = point_representation_->getNumberOfDimensions();
+	vector<float> _inputPointData;
+	_inputPointData.resize(numDimensions);
+	vector<float> _targetPointData;
+	_targetPointData.resize(numDimensions);
+	if (weight.empty()) {
+		weight.resize(numDimensions);
+		for (auto& _w : weight) {
+			_w = 1.0;
+		}
+	}
+	//cout << "weight: ";
+	//for (auto& _w : weight) {
+	//	cout << " " << _w;
+	//}
+	//cout << endl;
+	//if (weight.size() != numDimensions) {
+	//	
+	//}
+
+	if (pcl::isSamePointType<PointSource, PointTarget>())
+	{
+		// Iterate over the input set of source indices
+		for (std::vector<int>::const_iterator idx = indices_->begin(); idx != indices_->end(); ++idx)
+		{
+			//r半径搜索
+			treeXYZ.radiusSearch((*inputXYZ)[*idx], max_distance, index, distance);
+			//cout << "1" << endl;
+			point_representation_->vectorize<vector<float>>((*input_)[*idx], _inputPointData);
+			//cout << "2" <<endl;
+			//计算r半径内最佳匹配点
+			__val = -1.0;
+			for (int _i = 0; _i < index.size(); ++_i) {
+
+				point_representation_->vectorize<vector<float>>((*target_)[index[_i]], _targetPointData);
+				float __temp = 0;
+				for (int _j = 0; _j < numDimensions; ++_j) {
+					__temp += pow(_inputPointData[_j] - _targetPointData[_j], 2.0) * weight[_j];
+				}
+				if (__temp < __val || __val == -1) {
+					__index = _i;
+					__val = __temp;
+				}
+			}
+			//cout << "3" << endl;
+			if (index.empty() || distance[0] > max_dist_sqr)
+				continue;
+
+			corr.index_query = *idx;
+			corr.index_match = index[__index];
+			corr.distance = distance[__index];
+			correspondences[nr_valid_correspondences++] = corr;
+		}
+	}
+	else
+	{
+		PointTarget pt;
+		//无用，源代码
+		// Iterate over the input set of source indices
+		for (std::vector<int>::const_iterator idx = indices_->begin(); idx != indices_->end(); ++idx)
+		{
+			// Copy the source data to a target PointTarget format so we can search in the tree
+			pcl::copyPoint<PointSource, PointTarget>((*input_)[*idx], pt);
+
+			tree_->nearestKSearch(pt, 1, index, distance);
+			if (distance[0] > max_dist_sqr)
+				continue;
+
+			corr.index_query = *idx;
+			corr.index_match = index[0];
+			corr.distance = distance[0];
+			correspondences[nr_valid_correspondences++] = corr;
+		}
+	}
+	correspondences.resize(nr_valid_correspondences);
+	deinitCompute();
+}
+template <typename PointSource, typename PointTarget, typename Scalar> void
+MyCorrespondenceEstimation<PointSource, PointTarget, Scalar>::setWeight(vector<float> _weight) {
+	if (weight.size() != _weight.size()) weight.resize(_weight.size());
+	for (int _i = 0; _i < weight.size(); ++_i) {
+		weight[_i] = _weight[_i];
+	}
+}
+
 /**
  * @brief		pcl可视化测试
  * @param[in]	filePath pcd	文件路径
@@ -353,12 +491,16 @@ pairAlignWithNormal(
 	const cloud::PointCloudPtr& tgtCloudPtr,
 	cloud::PointCloudPtr& resCloudPtr,
 	Eigen::Matrix4f& final_transformation,
-	bool downSample)
+	bool downSample,
+	float downSampleSize,
+	float maxDis,
+	bool useMyEm)
 {
 	//自定义 Point Representation
 	class MyPointRepresentationNormal :public pcl::PointRepresentation<cloud::PointNormalT> {
 		using pcl::PointRepresentation<cloud::PointNormalT>::nr_dimensions_;
 	public:
+		using Ptr = shared_ptr<MyPointRepresentationNormal>;
 		MyPointRepresentationNormal() {
 			nr_dimensions_ = 4;
 		}
@@ -370,13 +512,17 @@ pairAlignWithNormal(
 			out[3] = p.curvature;
 		}
 	};
-
+	bool showInfo = false;
+	//bool useMyEm = true;
+	clock_t startTime, endTime;
+	double useTime;
 	cloud::PointCloudPtr _srcCloudPtr(new cloud::PointCloud);  //源点云下采样
 	cloud::PointCloudPtr _tgtCloudPtr(new cloud::PointCloud);  //目标点云下采样
 	//下采样
+	startTime = clock();
 	if (downSample) {
 		pcl::VoxelGrid<cloud::PointT> grid;
-		grid.setLeafSize(0.01, 0.01, 0.01);
+		grid.setLeafSize(downSampleSize, downSampleSize, downSampleSize);
 		grid.setInputCloud(srcCloudPtr);
 		grid.filter(*_srcCloudPtr);
 		grid.setInputCloud(tgtCloudPtr);
@@ -386,6 +532,9 @@ pairAlignWithNormal(
 		_srcCloudPtr = srcCloudPtr;
 		_tgtCloudPtr = tgtCloudPtr;
 	}
+	endTime = clock();
+	useTime = (double)(endTime - startTime) / CLOCKS_PER_SEC;
+	if(showInfo)cout << "降采样用时：" << useTime << endl;
 
 	//计算法线和曲率
 	pcl::NormalEstimation<cloud::PointT, cloud::PointNormalT> normal_est;
@@ -403,15 +552,23 @@ pairAlignWithNormal(
 	normal_est.compute(*_tgtCloudNormalPtr);
 	pcl::copyPointCloud(*_tgtCloudPtr, *_tgtCloudNormalPtr);
 
-	MyPointRepresentationNormal point_representation;
+	MyPointRepresentationNormal::Ptr point_representation(new MyPointRepresentationNormal);
 	float alpha[4] = { 1.0, 1.0, 1.0, 1.0 };
-	point_representation.setRescaleValues(alpha);
+	point_representation->setRescaleValues(alpha);
+
+	MyCorrespondenceEstimation<cloud::PointNormalT, cloud::PointNormalT>::Ptr 
+		corrEstimation(new MyCorrespondenceEstimation<cloud::PointNormalT, cloud::PointNormalT>);
+	corrEstimation->setPointRepresentation(point_representation);
+	vector<float> weight = { 1.0, 1.0, 1.0, 1.0 };
+	corrEstimation->setWeight(weight);
 
 	pcl::IterativeClosestPointNonLinear<cloud::PointNormalT, cloud::PointNormalT> icp_nl;  //实例 ICP 对象
 	//icp_nl.setEuclideanFitnessEpsilon(1e-6);
-	icp_nl.setTransformationEpsilon(1e-4);  //设置两个临近变换的最大平方差
-	icp_nl.setMaxCorrespondenceDistance(0.1);  //设置源点与目标点的最大匹配距离(米)
-	icp_nl.setPointRepresentation(pcl::make_shared<const MyPointRepresentationNormal>(point_representation));
+	icp_nl.setTransformationEpsilon(1e-6);  //设置两个临近变换的最大平方差
+	//icp_nl.setUseReciprocalCorrespondences(true);
+	icp_nl.setMaxCorrespondenceDistance(maxDis);  //设置源点与目标点的最大匹配距离(米)
+	icp_nl.setPointRepresentation(point_representation);
+	if(useMyEm)icp_nl.setCorrespondenceEstimation(corrEstimation);
 	icp_nl.setInputSource(_srcCloudNormalPtr);
 	icp_nl.setInputTarget(_tgtCloudNormalPtr);
 
@@ -428,23 +585,78 @@ pairAlignWithNormal(
 	cloud::Color whitePoint = { 255.0, 255.0, 255.0 };
 	vector<cloud::Color> colorVec = { redPoint, greenPoint, bluePoint, yellowPoint, purplePoint, cyanPoint };
 	vector<cloud::Color> colorWhiteVec = { whitePoint };
-	for (int i = 0; i < 32; ++i) {
-		cout << i << "th align" << endl;
+	pcl::CorrespondencesPtr coors;
+	startTime = clock();
+	float sum = 0;
+	for (int i = 0; i < 256; ++i) {
+		if (showInfo)cout << i << "th align" << endl;
 		icp_nl.setInputSource(_srcCloudNormalPtr);
 		icp_nl.align(*transCloudNormalPtr);
-		transformation = icp_nl.getFinalTransformation() * transformation;
-
-		if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()) {
-			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.003);
-			cout << "set distance to" << icp_nl.getMaxCorrespondenceDistance() << endl;
+		if (i == 0 && showInfo) {
+			coors = icp_nl.correspondences_;
+			for (auto _coor : *coors) {
+				sum += pow(_srcCloudNormalPtr->at(_coor.index_query).x - _tgtCloudNormalPtr->at(_coor.index_match).x, 2.0) +
+					pow(_srcCloudNormalPtr->at(_coor.index_query).y - _tgtCloudNormalPtr->at(_coor.index_match).y, 2.0) +
+					pow(_srcCloudNormalPtr->at(_coor.index_query).z - _tgtCloudNormalPtr->at(_coor.index_match).z, 2.0);
+			}
+			sum /= coors->size();
+			if (showInfo)cout << "源MSE: " << sum << endl;
 		}
+		transformation = icp_nl.getFinalTransformation() * transformation;
+		//if (pre_transformation == icp_nl.getLastIncrementalTransformation())break;
+		if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()&&
+			icp_nl.getMaxCorrespondenceDistance() > 0.005) {
+			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.001);
+			if (showInfo)cout << "set distance to" << icp_nl.getMaxCorrespondenceDistance() << endl;
+			if (icp_nl.getMaxCorrespondenceDistance() < 0)break;
+		}
+		if (icp_nl.getMaxCorrespondenceDistance() <= 0.005)break;
 		pre_transformation = icp_nl.getLastIncrementalTransformation();
 		//pre_transformation = transformation;
 		_srcCloudNormalPtr = transCloudNormalPtr;
-		pcl::transformPointCloud(*srcCloudPtr, *resCloudPtr, transformation);
-		cloud::PointCloudPtrVec _viewerVec = { resCloudPtr, tgtCloudPtr };
-		visualizePointCloud(_viewerVec, colorVec, {1, 4});
+
+		//MSE
+		if (showInfo|| useMyEm) {
+			coors = icp_nl.correspondences_;
+			sum = 0;
+			for (auto _coor : *coors) {
+				sum += pow(_srcCloudNormalPtr->at(_coor.index_query).x - _tgtCloudNormalPtr->at(_coor.index_match).x, 2.0) +
+					pow(_srcCloudNormalPtr->at(_coor.index_query).y - _tgtCloudNormalPtr->at(_coor.index_match).y, 2.0) +
+					pow(_srcCloudNormalPtr->at(_coor.index_query).z - _tgtCloudNormalPtr->at(_coor.index_match).z, 2.0);
+			}
+			sum /= coors->size();
+			if (showInfo)cout << "MSE: " << sum << endl;
+		}
+		if (useMyEm) {
+			float _weight2 = pow(2.718, -100000.0 * sum * 0.223);
+			cout << _weight2 << endl;
+			if (_weight2 > 0.8)_weight2 = 0.8;
+			else if (_weight2 < 0.2)_weight2 = 0.2;
+			float _weight1 = (1 - _weight2) / 3;
+			for (int _j = 0; _j < weight.size(); ++_j) {
+				if (_j < 3) {
+					weight[_j] = _weight1;
+				}
+				else {
+					weight[_j] = _weight2;
+				}
+			}
+			corrEstimation->setWeight(weight);
+			cout << "set weight to";
+			for (auto& _ : weight) {
+				cout << " " << _;
+			}
+			cout << endl;
+		}
+		//if (sum < 1.2e-5)break;
+
+		//pcl::transformPointCloud(*srcCloudPtr, *resCloudPtr, transformation);
+		//cloud::PointCloudPtrVec _viewerVec = { resCloudPtr, tgtCloudPtr };
+		//visualizePointCloud(_viewerVec, colorVec, {1, 4});
 	}
+	endTime = clock();
+	useTime = (double)(endTime - startTime) / CLOCKS_PER_SEC;
+	if (showInfo)cout << "配准用时：" << useTime << endl;
 	final_transformation = transformation;
 	pcl::transformPointCloud(*srcCloudPtr, *resCloudPtr, final_transformation);
 	return 0;
@@ -522,6 +734,7 @@ pairAlignWithCustom(
 	class MyPointRepresentationNormal :public pcl::PointRepresentation<cloud::PointNormalPfhT> {
 		using pcl::PointRepresentation<cloud::PointNormalPfhT>::nr_dimensions_;
 	public:
+		using Ptr = shared_ptr<MyPointRepresentationNormal>;
 		MyPointRepresentationNormal() {
 			nr_dimensions_ = 7;
 		}
@@ -530,10 +743,10 @@ pairAlignWithCustom(
 			out[0] = p.x;
 			out[1] = p.y;
 			out[2] = p.z;
-			out[3] = p.data_n[0];
-			out[4] = p.data_n[1];
-			out[5] = p.data_n[2];
-			out[6] = p.data_n[3];
+			//out[3] = p.data_n;
+			//out[4] = p.data_n[1];
+			//out[5] = p.data_n[2];
+			//out[6] = p.data_n[3];
 			//out[3] = p.pfh[0];
 			//out[4] = p.pfh[1];
 			//out[5] = p.pfh[2];
@@ -548,16 +761,23 @@ pairAlignWithCustom(
 	_srcCloudPtr = srcCloudPtr;
 	_tgtCloudPtr = tgtCloudPtr;
 
-	MyPointRepresentationNormal point_representation;
+	MyPointRepresentationNormal::Ptr point_representation(new MyPointRepresentationNormal);
 	float alpha[7] = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
 	//float alpha[3] = { 1.0, 1.0, 1.0 };
-	point_representation.setRescaleValues(alpha);
+	point_representation->setRescaleValues(alpha);
+
+	MyCorrespondenceEstimation<cloud::PointNormalPfhT, cloud::PointNormalPfhT>::Ptr
+		corrEstimation(new MyCorrespondenceEstimation<cloud::PointNormalPfhT, cloud::PointNormalPfhT>);
+	corrEstimation->setPointRepresentation(point_representation);
+	vector<float> weight = { 1.0, 1.0, 1.0, 1.0 , 1.0, 1.0, 1.0};
+	corrEstimation->setWeight(weight);
 
 	pcl::IterativeClosestPointNonLinear<cloud::PointNormalPfhT, cloud::PointNormalPfhT> icp_nl;  //实例 ICP 对象
 	//icp_nl.setEuclideanFitnessEpsilon(1e-6);
 	icp_nl.setTransformationEpsilon(1e-3);  //设置两个临近变换的最大平方差
-	icp_nl.setMaxCorrespondenceDistance(0.5);  //设置源点与目标点的最大匹配距离(米)
-	icp_nl.setPointRepresentation(pcl::make_shared<const MyPointRepresentationNormal>(point_representation));
+	icp_nl.setMaxCorrespondenceDistance(0.1);  //设置源点与目标点的最大匹配距离(米)
+	icp_nl.setPointRepresentation(point_representation);
+	icp_nl.setCorrespondenceEstimation(corrEstimation);
 	icp_nl.setInputSource(_srcCloudPtr);
 	icp_nl.setInputTarget(_tgtCloudPtr);
 
@@ -566,18 +786,43 @@ pairAlignWithCustom(
 	cloud::PointNormalPfhPtr transCloudNormalPtr = _srcCloudPtr;
 	icp_nl.setMaximumIterations(2);  //设置迭代次数
 	for (int i = 0; i < 64; ++i) {
+		cout << i << "th align" << endl;
 		icp_nl.setInputSource(_srcCloudPtr);
 		icp_nl.align(*transCloudNormalPtr);
 		transformation = icp_nl.getFinalTransformation() * transformation;
-		cout << i << ": " << transformation << endl;
-		cout << "================" << endl;
-		if (abs((icp_nl.getFinalTransformation() - pre_transformation).sum()) == 0) break;
+		//if (abs((icp_nl.getFinalTransformation() - pre_transformation).sum()) == 0) break;
 		if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()) {
-			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.01);
+			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.002);
 			cout << "setMaxCorrespondenceDistance" << icp_nl.getMaxCorrespondenceDistance() << endl;
+			if (icp_nl.getMaxCorrespondenceDistance() < 0)break;
 		}
 		pre_transformation = icp_nl.getLastIncrementalTransformation();
 		_srcCloudPtr = transCloudNormalPtr;
+		pcl::CorrespondencesPtr coors;
+		coors = icp_nl.correspondences_;
+		float sum = 0;
+		for (auto _coor : *coors) {
+			sum += pow(_srcCloudPtr->at(_coor.index_query).x - _tgtCloudPtr->at(_coor.index_match).x, 2.0) +
+				pow(_srcCloudPtr->at(_coor.index_query).y - _tgtCloudPtr->at(_coor.index_match).y, 2.0) +
+				pow(_srcCloudPtr->at(_coor.index_query).z - _tgtCloudPtr->at(_coor.index_match).z, 2.0);
+		}
+		sum /= coors->size();
+		cout << "MSE: " << sum << endl;
+		float _weight2 = pow(2.718, -1000.0 * sum * 0.368);
+		if (_weight2 > 0.9)_weight2 = 0.8;
+		else if (_weight2 < 0.1)_weight2 = 0.2;
+		float _weight1 = (1 - _weight2) / 3;
+		_weight2 /= 4;
+		for (int _j = 0; _j < weight.size(); ++_j) {
+			if (_j < 3) {
+				weight[_j] = _weight1;
+			}
+			else {
+				weight[_j] = _weight2;
+			}
+		}
+		corrEstimation->setWeight(weight);
+		cout << "================" << endl;
 	}
 	final_transformation = transformation;
 	cloud::PointCloudPtr _srcPointCloudPtr(new cloud::PointCloud);
@@ -645,19 +890,30 @@ registerPairsCloud(
 	bool saveResultToPcd,
 	bool downSample)
 {
-	registeredVec.push_back(pointCloudVec[0]);
+	cloud::Color redPoint = { 255.0, 0.0, 0.0 };
+	cloud::Color greenPoint = { 0.0, 255.0, 0.0 };
+	vector<cloud::Color>colors = { redPoint, greenPoint };
+	bool showInfo = false;
 	cloud::PointCloudPtr tgtPointCloudPtr, srcPointCloudPtr, tmpPointCloudPtr(new cloud::PointCloud);
-	Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity(), preTransformation = Eigen::Matrix4f::Identity();
+	pcl::copyPointCloud(*pointCloudVec[0], *tmpPointCloudPtr);
+	registeredVec.push_back(tmpPointCloudPtr);
+	Eigen::Matrix4f preTransformation = Eigen::Matrix4f::Identity();
 	transformationVec.push_back(preTransformation);
 	for (size_t i = 0; i < pointCloudVec.size() - 1; ++i) {
+		Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity();
 		cloud::PointCloudPtr resPointCloudPtr(new cloud::PointCloud);
 		tgtPointCloudPtr = pointCloudVec[i];
 		srcPointCloudPtr = pointCloudVec[i + 1];
 		if(withNormal)pairAlignWithNormal(srcPointCloudPtr, tgtPointCloudPtr, tmpPointCloudPtr, transformation, downSample);
 		else pairAlign(srcPointCloudPtr, tgtPointCloudPtr, tmpPointCloudPtr, transformation, downSample);
+		if (showInfo) {
+			pcl::transformPointCloud(*srcPointCloudPtr, *tmpPointCloudPtr, transformation);
+			cout << "pair with " << i << "th and " << i + 1 << "th" << endl;
+			visualizePointCloud({ tgtPointCloudPtr, tmpPointCloudPtr }, colors);
+		}
 		pcl::transformPointCloud(*tmpPointCloudPtr, *resPointCloudPtr, preTransformation);
 		preTransformation *= transformation;
-		transformationVec.push_back(preTransformation);
+		transformationVec.push_back(transformation);
 		registeredVec.push_back(resPointCloudPtr);
 
 		if (saveResultToPcd) {
@@ -665,8 +921,10 @@ registerPairsCloud(
 			filename << i << ".pcd";
 			pcl::io::savePCDFile(filename.str(), *resPointCloudPtr);
 		}
-		cout << "out" << endl;
-		cout << transformation << endl;
+		if (showInfo) {
+			cout << "out" << endl;
+			cout << transformation << endl;
+		}
 	}
 	return 0;
 }
@@ -1490,7 +1748,7 @@ int SeparateBG(
 	const cloud::PointCloudPtr inPointCloudPtr,
 	cloud::PointCloudPtr& out)
 {
-	bool show = true;
+	bool show = false;
 	cloud::PointCloudPtr _temp(new cloud::PointCloud);
 	if (show) cout << "距离滤波" << endl;
 	pcl::copyPointCloud<cloud::PointT, cloud::PointT>(*inPointCloudPtr, *out);
@@ -1506,7 +1764,7 @@ int SeparateBG(
 	if (show) visualizePointCloud(out);
 
 	if (show) cout << "平面分割" << endl;
-	planeSegmentation(0.02, out, _temp, true);
+	planeSegmentation(0.005, out, _temp, true);
 	pcl::copyPointCloud(*_temp, *out);
 	if (show) visualizePointCloud(out);
 

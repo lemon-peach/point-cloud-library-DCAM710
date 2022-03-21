@@ -621,3 +621,32 @@ int calcWeight(
 	}
 	return 0;
 }
+
+void depthToPointCloud(
+	const cv::Mat& image,
+	pcl::PointCloud<pcl::PointXYZ>::Ptr& pointCloudPtr,
+	float f,
+	float dx,
+	float dy)
+{
+	pointCloudPtr->resize(image.total());
+	pointCloudPtr->width = image.cols;
+	pointCloudPtr->height = image.rows;
+	float centerX = (float)image.cols / 2.0 - 0.5;
+	float centerY = (float)image.rows / 2.0 - 0.5;
+	float disX;
+	float disY;
+	float scale;
+	for (int _row = 0; _row < image.rows; ++_row) {
+		for (int _col = 0; _col < image.cols; ++_col) {
+			disX = ((float)_col - centerX) * dx;
+			disY = ((float)_row - centerY) * dy;
+			//scale = (float)image.at<ushort>(_row, _col) / 65535.0f / pow(disX * disX + disY * disY + f * f, 0.5);
+			scale = (float)image.at<ushort>(_row, _col) / 65535.0f / f;
+			//scale = 0.5 / f;
+			pointCloudPtr->at(_col, _row).x = disX * scale;
+			pointCloudPtr->at(_col, _row).y = disY * scale;
+			pointCloudPtr->at(_col, _row).z = f * scale;
+		}
+	}
+}
