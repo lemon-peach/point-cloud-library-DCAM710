@@ -1,5 +1,5 @@
+#define PCL_NO_PRECOMPILE
 #include "cloudOperation.h"
-//#include "function.h"
 #include <vtkRenderWindow.h>
 
 namespace cloud {
@@ -87,7 +87,8 @@ MyCorrespondenceEstimation<PointSource, PointTarget, Scalar>::determineCorrespon
 		for (std::vector<int>::const_iterator idx = indices_->begin(); idx != indices_->end(); ++idx)
 		{
 			//r半径搜索
-			treeXYZ.radiusSearch((*inputXYZ)[*idx], max_distance, index, distance);
+			//treeXYZ.radiusSearch((*inputXYZ)[*idx], max_distance, index, distance);
+			treeXYZ.radiusSearchT((*inputXYZ)[*idx], max_distance, index, distance, 20);
 			//cout << "1" << endl;
 			point_representation_->vectorize<vector<float>>((*input_)[*idx], _inputPointData);
 			//cout << "2" <<endl;
@@ -364,119 +365,6 @@ icpRegistration(
 }
 
 /**
- * @brief		配准：计算源点云到目标点云的变换矩阵，根据点进行配准
- * @param[in]	srcCloudPtr				源点云
- * @param[in]	tgtCloudPtr				目标点云
- * @param[out]	resCloudPtr				源点云经变换后的配准点云
- * @param[out]	final_transformation	最终的变换矩阵
- * @param[in]	downSample				是否对输入点云进行下采样
- * @return
-*/
-//int
-//pairAlign(
-//	const cloud::PointCloudPtr& srcCloudPtr,
-//	const cloud::PointCloudPtr& tgtCloudPtr,
-//	cloud::PointCloudPtr& resCloudPtr,
-//	Eigen::Matrix4f& final_transformation,
-//	bool downSample)
-//{
-//	//自定义 Point Representation
-//	class MyPointRepresentation :public pcl::PointRepresentation<cloud::PointNormalT> {
-//		using pcl::PointRepresentation<cloud::PointNormalT>::nr_dimensions_;
-//	public:
-//		MyPointRepresentation() {
-//			nr_dimensions_ = 4;
-//		}
-//		virtual void copyToFloatArray(const cloud::PointNormalT& p, float* out) const
-//		{
-//			out[0] = p.x;
-//			out[1] = p.y;
-//			out[2] = p.z;
-//			out[3] = p.curvature;
-//			//bool er = false;
-//			//for (int i = 0; i < nr_dimensions_; i++) {
-//			//	if (!std::isfinite(out[i])) {
-//			//		er = true;
-//			//	}
-//			//}
-//			//if (er) {
-//			//	cout << "copyToFloatArray er" << endl;
-//			//	for (int i = 0; i < nr_dimensions_; i++) {
-//			//		cout << out[i] << "\t";
-//			//	}
-//			//	cout << endl;
-//			//}
-//		}
-//	};
-//
-//	cloud::PointCloudPtr _srcCloudPtr(new cloud::PointCloud);  //源点云下采样
-//	cloud::PointCloudPtr _tgtCloudPtr(new cloud::PointCloud);  //目标点云下采样
-//	//下采样
-//	if (downSample) {
-//		pcl::VoxelGrid<cloud::PointT> grid;
-//		grid.setLeafSize(0.01, 0.01, 0.01);
-//		grid.setInputCloud(srcCloudPtr);
-//		grid.filter(*_srcCloudPtr);
-//		grid.setInputCloud(tgtCloudPtr);
-//		grid.filter(*_tgtCloudPtr);
-//	}
-//	else {
-//		_srcCloudPtr = srcCloudPtr;
-//		_tgtCloudPtr = tgtCloudPtr;
-//	}
-//
-//	//计算法线和曲率
-//	pcl::NormalEstimation<cloud::PointT, cloud::PointNormalT> normal_est;
-//	pcl::search::KdTree<cloud::PointT>::Ptr kdtree(new pcl::search::KdTree<cloud::PointT>());
-//	normal_est.setSearchMethod(kdtree);  //设置搜索方法
-//	normal_est.setKSearch(30);  //设置 K 个临近点用于计算法线和曲率
-//
-//	normal_est.setInputCloud(_srcCloudPtr);
-//	cloud::PointCloudNormalPtr _srcCloudNormalPtr(new cloud::PointCloudNormal);
-//	normal_est.compute(*_srcCloudNormalPtr);
-//	pcl::copyPointCloud(*_srcCloudPtr, *_srcCloudNormalPtr);
-//
-//	normal_est.setInputCloud(_tgtCloudPtr);
-//	cloud::PointCloudNormalPtr _tgtCloudNormalPtr(new cloud::PointCloudNormal);
-//	normal_est.compute(*_tgtCloudNormalPtr);
-//	pcl::copyPointCloud(*_tgtCloudPtr, *_tgtCloudNormalPtr);
-//
-//	MyPointRepresentation point_representation;
-//	float alpha[4] = { 1.0, 1.0, 1.0, 1.0 };
-//	point_representation.setRescaleValues(alpha);
-//
-//	pcl::IterativeClosestPointNonLinear<cloud::PointNormalT, cloud::PointNormalT> icp_nl;  //实例 ICP 对象
-//	//icp_nl.setEuclideanFitnessEpsilon(1e-6);
-//	icp_nl.setTransformationEpsilon(1e-6);  //设置两个临近变换的最大平方差
-//	icp_nl.setMaxCorrespondenceDistance(0.1);  //设置源点与目标点的最大匹配距离(米)
-//	icp_nl.setPointRepresentation(pcl::make_shared<const MyPointRepresentation>(point_representation));
-//	icp_nl.setInputSource(_srcCloudNormalPtr);
-//	icp_nl.setInputTarget(_tgtCloudNormalPtr);
-//
-//	//多次配准
-//	Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity(), pre_transformation;
-//	cloud::PointCloudNormalPtr transCloudNormalPtr = _srcCloudNormalPtr;
-//	icp_nl.setMaximumIterations(2);  //设置迭代次数
-//	for (int i = 0; i < 64; ++i) {
-//		icp_nl.setInputSource(_srcCloudNormalPtr);
-//		icp_nl.align(*transCloudNormalPtr);
-//		transformation = icp_nl.getFinalTransformation() * transformation;
-//
-//		//if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()) {
-//		//	icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.005);
-//		//}
-//		pre_transformation = transformation;
-//		_srcCloudNormalPtr = transCloudNormalPtr;
-//	}
-//	final_transformation = transformation;
-//	cout << "==============" << endl;
-//	cout << "in" << endl;
-//	cout << transformation << endl;
-//	pcl::transformPointCloud(*srcCloudPtr, *resCloudPtr, final_transformation);
-//	return 0;
-//}
-
-/**
 * @brief		配准：计算源点云到目标点云的变换矩阵，根据点和曲率进行配准
 * @param[in]	srcCloudPtr				源点云
 * @param[in]	tgtCloudPtr				目标点云
@@ -494,7 +382,8 @@ pairAlignWithNormal(
 	bool downSample,
 	float downSampleSize,
 	float maxDis,
-	bool useMyEm)
+	bool useMyEm,
+	bool edgeFilter)
 {
 	//自定义 Point Representation
 	class MyPointRepresentationNormal :public pcl::PointRepresentation<cloud::PointNormalT> {
@@ -512,7 +401,7 @@ pairAlignWithNormal(
 			out[3] = p.curvature;
 		}
 	};
-	bool showInfo = false;
+	bool showInfo = true;
 	//bool useMyEm = true;
 	clock_t startTime, endTime;
 	double useTime;
@@ -534,13 +423,28 @@ pairAlignWithNormal(
 	}
 	endTime = clock();
 	useTime = (double)(endTime - startTime) / CLOCKS_PER_SEC;
-	if(showInfo)cout << "降采样用时：" << useTime << endl;
+	if(showInfo && downSample)cout << "降采样用时：" << useTime << endl;
+
+	//滤除离群点
+	float resolution = getResolution(_srcCloudPtr);
+	cout << "resolution" << resolution <<endl;
+	pcl::RadiusOutlierRemoval<pcl::PointXYZ> outrem;
+	outrem.setMinNeighborsInRadius(12);
+	outrem.setKeepOrganized(false);
+	outrem.setRadiusSearch(resolution * 4.0f);
+	outrem.setInputCloud(_srcCloudPtr);
+	outrem.filter(*_srcCloudPtr);
+	outrem.setInputCloud(_tgtCloudPtr);
+	outrem.filter(*_tgtCloudPtr);
 
 	//计算法线和曲率
+	float normalRadius = 4.0f * resolution;
+	cout << "normalRadius:" << normalRadius << endl;
 	pcl::NormalEstimation<cloud::PointT, cloud::PointNormalT> normal_est;
 	pcl::search::KdTree<cloud::PointT>::Ptr kdtree(new pcl::search::KdTree<cloud::PointT>());
 	normal_est.setSearchMethod(kdtree);  //设置搜索方法
-	normal_est.setKSearch(30);  //设置 K 个临近点用于计算法线和曲率
+	//normal_est.setKSearch(30);  //设置 K 个临近点用于计算法线和曲率
+	normal_est.setRadiusSearch(normalRadius);
 
 	normal_est.setInputCloud(_srcCloudPtr);
 	cloud::PointCloudNormalPtr _srcCloudNormalPtr(new cloud::PointCloudNormal);
@@ -551,6 +455,26 @@ pairAlignWithNormal(
 	cloud::PointCloudNormalPtr _tgtCloudNormalPtr(new cloud::PointCloudNormal);
 	normal_est.compute(*_tgtCloudNormalPtr);
 	pcl::copyPointCloud(*_tgtCloudPtr, *_tgtCloudNormalPtr);
+
+	//滤除边界点
+	if (edgeFilter) {
+		cout << "edge" << endl;
+		pcl::PointIndices::Ptr indicesPtr(new pcl::PointIndices);
+		pcl::ExtractIndices<cloud::PointNormalT> extract;
+		edgeDetection(_srcCloudNormalPtr, indicesPtr, normalRadius * 2.0f);
+		edgeViewer(_srcCloudNormalPtr);
+		extract.setInputCloud(_srcCloudNormalPtr);
+		extract.setIndices(indicesPtr);
+		extract.setNegative(true);
+		extract.filter(*_srcCloudNormalPtr);
+		edgeDetection(_tgtCloudNormalPtr, indicesPtr, normalRadius * 2.0f);
+		edgeViewer(_tgtCloudNormalPtr);
+		extract.setInputCloud(_tgtCloudNormalPtr);
+		extract.setIndices(indicesPtr);
+		extract.setNegative(true);
+		extract.filter(*_tgtCloudNormalPtr);
+	}
+
 
 	MyPointRepresentationNormal::Ptr point_representation(new MyPointRepresentationNormal);
 	float alpha[4] = { 1.0, 1.0, 1.0, 1.0 };
@@ -563,19 +487,20 @@ pairAlignWithNormal(
 	corrEstimation->setWeight(weight);
 
 	pcl::IterativeClosestPointNonLinear<cloud::PointNormalT, cloud::PointNormalT> icp_nl;  //实例 ICP 对象
-	//icp_nl.setEuclideanFitnessEpsilon(1e-6);
-	icp_nl.setTransformationEpsilon(1e-6);  //设置两个临近变换的最大平方差
+	icp_nl.setEuclideanFitnessEpsilon(1e-6);
+	icp_nl.setTransformationEpsilon(1e-7);  //设置两个临近变换的最大平方差
 	//icp_nl.setUseReciprocalCorrespondences(true);
 	icp_nl.setMaxCorrespondenceDistance(maxDis);  //设置源点与目标点的最大匹配距离(米)
 	icp_nl.setPointRepresentation(point_representation);
 	if(useMyEm)icp_nl.setCorrespondenceEstimation(corrEstimation);
 	icp_nl.setInputSource(_srcCloudNormalPtr);
 	icp_nl.setInputTarget(_tgtCloudNormalPtr);
+	//icp_nl.
 
 	//多次配准
 	Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity(), pre_transformation;
 	cloud::PointCloudNormalPtr transCloudNormalPtr = _srcCloudNormalPtr;
-	icp_nl.setMaximumIterations(2);  //设置迭代次数
+	icp_nl.setMaximumIterations(64);  //设置迭代次数
 	cloud::Color redPoint = { 255.0, 0.0, 0.0 };
 	cloud::Color greenPoint = { 0.0, 255.0, 0.0 };
 	cloud::Color bluePoint = { 0.0, 0.0, 255.0 };
@@ -604,13 +529,12 @@ pairAlignWithNormal(
 		}
 		transformation = icp_nl.getFinalTransformation() * transformation;
 		//if (pre_transformation == icp_nl.getLastIncrementalTransformation())break;
-		if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()&&
-			icp_nl.getMaxCorrespondenceDistance() > 0.005) {
-			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.001);
-			if (showInfo)cout << "set distance to" << icp_nl.getMaxCorrespondenceDistance() << endl;
+		if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()) {
+			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - pow(sum, 0.5f)*0.05);
+			//if (showInfo)cout << "set distance to" << icp_nl.getMaxCorrespondenceDistance() << endl;
 			if (icp_nl.getMaxCorrespondenceDistance() < 0)break;
 		}
-		if (icp_nl.getMaxCorrespondenceDistance() <= 0.005)break;
+		if (showInfo) cout << "distance:" << icp_nl.getMaxCorrespondenceDistance() << endl;
 		pre_transformation = icp_nl.getLastIncrementalTransformation();
 		//pre_transformation = transformation;
 		_srcCloudNormalPtr = transCloudNormalPtr;
@@ -623,6 +547,227 @@ pairAlignWithNormal(
 				sum += pow(_srcCloudNormalPtr->at(_coor.index_query).x - _tgtCloudNormalPtr->at(_coor.index_match).x, 2.0) +
 					pow(_srcCloudNormalPtr->at(_coor.index_query).y - _tgtCloudNormalPtr->at(_coor.index_match).y, 2.0) +
 					pow(_srcCloudNormalPtr->at(_coor.index_query).z - _tgtCloudNormalPtr->at(_coor.index_match).z, 2.0);
+			}
+			sum /= coors->size();
+			if (showInfo)cout << "MSE: " << sum << endl;
+		}
+		if (useMyEm) {
+			float _weight2 = pow(2.718, -100000.0 * sum * 0.05);
+			//cout << _weight2 << endl;
+			if (_weight2 > 0.8)_weight2 = 0.8;
+			else if (_weight2 < 0.2)_weight2 = 0;
+			_weight2 = 0.25 - 0.25 * _weight2;
+			float _weight1 = (1 - _weight2) / 3;
+			for (int _j = 0; _j < weight.size(); ++_j) {
+				if (_j < 3) {
+					weight[_j] = _weight1;
+				}
+				else {
+					weight[_j] = _weight2;
+				}
+			}
+			corrEstimation->setWeight(weight);
+			cout << "set weight to";
+			for (auto& _ : weight) {
+				cout << " " << _;
+			}
+			cout << endl;
+		}
+	}
+	endTime = clock();
+	useTime = (double)(endTime - startTime) / CLOCKS_PER_SEC;
+	if (showInfo)cout << "配准用时：" << useTime << endl;
+	final_transformation = transformation;
+	pcl::transformPointCloud(*srcCloudPtr, *resCloudPtr, final_transformation);
+	return 0;
+}
+
+/**
+ * @brief		配准：计算源点云到目标点云的变换矩阵，根据点进行配准
+ * @param[in]	srcCloudPtr				源点云
+ * @param[in]	tgtCloudPtr				目标点云
+ * @param[out]	resCloudPtr				源点云经变换后的配准点云
+ * @param[out]	final_transformation	最终的变换矩阵
+ * @param[in]	downSample				是否对输入点云进行下采样
+ * @return
+*/
+int
+pairAlign(
+	const cloud::PointCloudPtr& srcCloudPtr,
+	const cloud::PointCloudPtr& tgtCloudPtr,
+	cloud::PointCloudPtr& resCloudPtr,
+	Eigen::Matrix4f& final_transformation,
+	bool downSample,
+	float downSampleSize,
+	float maxDis)
+{
+	bool showInfo = true;
+	cloud::PointCloudPtr _srcCloudPtr(new cloud::PointCloud);  //源点云下采样
+	cloud::PointCloudPtr _tgtCloudPtr(new cloud::PointCloud);  //目标点云下采样
+	//下采样
+	if (downSample) {
+		pcl::VoxelGrid<cloud::PointT> grid;
+		grid.setLeafSize(downSampleSize, downSampleSize, downSampleSize);
+		grid.setInputCloud(srcCloudPtr);
+		grid.filter(*_srcCloudPtr);
+		grid.setInputCloud(tgtCloudPtr);
+		grid.filter(*_tgtCloudPtr);
+	}
+	else {
+		_srcCloudPtr = srcCloudPtr;
+		_tgtCloudPtr = tgtCloudPtr;
+	}
+
+	pcl::IterativeClosestPoint<cloud::PointT, cloud::PointT> icp_nl;  //实例 ICP 对象
+	//icp_nl.setEuclideanFitnessEpsilon(1e-6);
+	icp_nl.setTransformationEpsilon(1e-7);  //设置两个临近变换的最大平方差
+	icp_nl.setMaxCorrespondenceDistance(maxDis);  //设置源点与目标点的最大匹配距离(米)
+	//icp_nl.setPointRepresentation(pcl::make_shared<const MyPointRepresentation2>(point_representation));
+	icp_nl.setInputSource(_srcCloudPtr);
+	icp_nl.setInputTarget(_tgtCloudPtr);
+
+	//多次配准
+	Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity(), pre_transformation;
+	cloud::PointCloudPtr transCloudPtr = _srcCloudPtr;
+	icp_nl.setMaximumIterations(2);  //设置迭代次数
+	pcl::CorrespondencesPtr coors;
+	float sum = 0.0f;
+	for (int i = 0; i < 256; ++i) {
+		cout << i << "th align" << endl;
+		icp_nl.setInputSource(_srcCloudPtr);
+		icp_nl.align(*transCloudPtr);
+		coors = icp_nl.correspondences_;
+		if (showInfo) {
+			coors = icp_nl.correspondences_;
+			sum = 0;
+			for (auto _coor : *coors) {
+				sum += pow(_srcCloudPtr->at(_coor.index_query).x - _tgtCloudPtr->at(_coor.index_match).x, 2.0) +
+					pow(_srcCloudPtr->at(_coor.index_query).y - _tgtCloudPtr->at(_coor.index_match).y, 2.0) +
+					pow(_srcCloudPtr->at(_coor.index_query).z - _tgtCloudPtr->at(_coor.index_match).z, 2.0);
+			}
+			sum /= coors->size();
+			if (showInfo)cout << "MSE: " << sum << endl;
+		}
+		transformation = icp_nl.getFinalTransformation() * transformation;
+
+		if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()) {
+			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - pow(sum, 0.5f) * 0.05);
+			//if (showInfo)cout << "set distance to" << icp_nl.getMaxCorrespondenceDistance() << endl;
+			if (icp_nl.getMaxCorrespondenceDistance() < 0)break;
+		}
+		if (showInfo) cout << "distance:" << icp_nl.getMaxCorrespondenceDistance() << endl;
+		pre_transformation = icp_nl.getLastIncrementalTransformation();
+		_srcCloudPtr = transCloudPtr;
+	}
+	final_transformation = transformation;
+	pcl::transformPointCloud(*srcCloudPtr, *resCloudPtr, final_transformation);
+	return 0;
+}
+
+int
+pairAlignWithCustom(
+	const cloud::PointNormalPfhPtr& srcCloudPtr,
+	const cloud::PointNormalPfhPtr& tgtCloudPtr,
+	cloud::PointCloudPtr& resCloudPtr,
+	Eigen::Matrix4f& final_transformation,
+	bool downSample,
+	float downSampleSize,
+	float maxDis,
+	bool useMyEm)
+{
+	//自定义 Point Representation
+	class MyPointRepresentationNormal :public pcl::PointRepresentation<cloud::PointNormalPfhT> {
+		using pcl::PointRepresentation<cloud::PointNormalPfhT>::nr_dimensions_;
+	public:
+		using Ptr = shared_ptr<MyPointRepresentationNormal>;
+		MyPointRepresentationNormal() {
+			nr_dimensions_ = 3;
+		}
+		MyPointRepresentationNormal(int n) {
+			nr_dimensions_ = n;
+		}
+		virtual void copyToFloatArray(const cloud::PointNormalPfhT& p, float* out) const
+		{
+			out[0] = p.x;
+			out[1] = p.y;
+			out[2] = p.z;
+			//out[3] = p.data_additional[0];
+			for (int _i = 0; _i < nr_dimensions_-3; ++_i) {
+				out[_i+3] = p.data_additional[_i];
+			}
+		}
+	};
+
+	bool showInfo = false;
+	cloud::PointNormalPfhPtr _srcCloudPtr(new cloud::PointNormalPfh);  //源点云下采样
+	cloud::PointNormalPfhPtr _tgtCloudPtr(new cloud::PointNormalPfh);  //目标点云下采样
+	//下采样
+	_srcCloudPtr = srcCloudPtr;
+	_tgtCloudPtr = tgtCloudPtr;
+
+	#define nr_dimensions 4
+	MyPointRepresentationNormal::Ptr point_representation(new MyPointRepresentationNormal(nr_dimensions));
+	float alpha[nr_dimensions] = { 1.0, 1.0, 1.0, 1.0};
+	//float alpha[3] = { 1.0, 1.0, 1.0 };
+	point_representation->setRescaleValues(alpha);
+
+	MyCorrespondenceEstimation<cloud::PointNormalPfhT, cloud::PointNormalPfhT>::Ptr
+		corrEstimation(new MyCorrespondenceEstimation<cloud::PointNormalPfhT, cloud::PointNormalPfhT>);
+	corrEstimation->setPointRepresentation(point_representation);
+	vector<float> weight = { 1.0, 1.0, 1.0, 1.0};
+	corrEstimation->setWeight(weight);
+
+	pcl::IterativeClosestPointNonLinear<cloud::PointNormalPfhT, cloud::PointNormalPfhT> icp_nl;  //实例 ICP 对象
+	//icp_nl.setEuclideanFitnessEpsilon(1e-6);
+	icp_nl.setTransformationEpsilon(1e-5);  //设置两个临近变换的最大平方差
+	icp_nl.setMaxCorrespondenceDistance(1);  //设置源点与目标点的最大匹配距离(米)
+	icp_nl.setPointRepresentation(point_representation);
+	icp_nl.setMaximumIterations(2);  //设置迭代次数
+	//icp_nl.setCorrespondenceEstimation(corrEstimation);
+	icp_nl.setInputSource(_srcCloudPtr);
+	icp_nl.setInputTarget(_tgtCloudPtr);
+
+	////多次配准
+	Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity(), pre_transformation;
+	cloud::PointNormalPfhPtr transCloudNormalPtr = _srcCloudPtr;
+	float sum = 0.0f;
+	pcl::CorrespondencesPtr coors;
+	clock_t startTime = clock();
+	for (int i = 0; i < 64; ++i) {
+		if (showInfo)cout << i << "th align" << endl;
+		icp_nl.setInputSource(_srcCloudPtr);
+		icp_nl.align(*transCloudNormalPtr);
+		if (i == 0 && showInfo) {
+			coors = icp_nl.correspondences_;
+			for (auto _coor : *coors) {
+				sum += pow(_srcCloudPtr->at(_coor.index_query).x - _tgtCloudPtr->at(_coor.index_match).x, 2.0) +
+					pow(_srcCloudPtr->at(_coor.index_query).y - _tgtCloudPtr->at(_coor.index_match).y, 2.0) +
+					pow(_srcCloudPtr->at(_coor.index_query).z - _tgtCloudPtr->at(_coor.index_match).z, 2.0);
+			}
+			sum /= coors->size();
+			if (showInfo)cout << "源MSE: " << sum << endl;
+		}
+		transformation = icp_nl.getFinalTransformation() * transformation;
+		//if (pre_transformation == icp_nl.getLastIncrementalTransformation())break;
+		if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon() &&
+			icp_nl.getMaxCorrespondenceDistance() > 0.005) {
+			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.001);
+			if (showInfo)cout << "set distance to" << icp_nl.getMaxCorrespondenceDistance() << endl;
+			if (icp_nl.getMaxCorrespondenceDistance() < 0)break;
+		}
+		if (icp_nl.getMaxCorrespondenceDistance() <= 0.005)break;
+		pre_transformation = icp_nl.getLastIncrementalTransformation();
+		//pre_transformation = transformation;
+		_srcCloudPtr = transCloudNormalPtr;
+
+		//MSE
+		if (showInfo || useMyEm) {
+			coors = icp_nl.correspondences_;
+			sum = 0;
+			for (auto _coor : *coors) {
+				sum += pow(_srcCloudPtr->at(_coor.index_query).x - _tgtCloudPtr->at(_coor.index_match).x, 2.0) +
+					pow(_srcCloudPtr->at(_coor.index_query).y - _tgtCloudPtr->at(_coor.index_match).y, 2.0) +
+					pow(_srcCloudPtr->at(_coor.index_query).z - _tgtCloudPtr->at(_coor.index_match).z, 2.0);
 			}
 			sum /= coors->size();
 			if (showInfo)cout << "MSE: " << sum << endl;
@@ -648,181 +793,6 @@ pairAlignWithNormal(
 			}
 			cout << endl;
 		}
-		//if (sum < 1.2e-5)break;
-
-		//pcl::transformPointCloud(*srcCloudPtr, *resCloudPtr, transformation);
-		//cloud::PointCloudPtrVec _viewerVec = { resCloudPtr, tgtCloudPtr };
-		//visualizePointCloud(_viewerVec, colorVec, {1, 4});
-	}
-	endTime = clock();
-	useTime = (double)(endTime - startTime) / CLOCKS_PER_SEC;
-	if (showInfo)cout << "配准用时：" << useTime << endl;
-	final_transformation = transformation;
-	pcl::transformPointCloud(*srcCloudPtr, *resCloudPtr, final_transformation);
-	return 0;
-}
-
-/**
- * @brief		配准：计算源点云到目标点云的变换矩阵，根据点进行配准
- * @param[in]	srcCloudPtr				源点云
- * @param[in]	tgtCloudPtr				目标点云
- * @param[out]	resCloudPtr				源点云经变换后的配准点云
- * @param[out]	final_transformation	最终的变换矩阵
- * @param[in]	downSample				是否对输入点云进行下采样
- * @return
-*/
-int
-pairAlign(
-	const cloud::PointCloudPtr& srcCloudPtr,
-	const cloud::PointCloudPtr& tgtCloudPtr,
-	cloud::PointCloudPtr& resCloudPtr,
-	Eigen::Matrix4f& final_transformation,
-	bool downSample)
-{
-	cloud::PointCloudPtr _srcCloudPtr(new cloud::PointCloud);  //源点云下采样
-	cloud::PointCloudPtr _tgtCloudPtr(new cloud::PointCloud);  //目标点云下采样
-	//下采样
-	if (downSample) {
-		pcl::VoxelGrid<cloud::PointT> grid;
-		grid.setLeafSize(0.01, 0.01, 0.01);
-		grid.setInputCloud(srcCloudPtr);
-		grid.filter(*_srcCloudPtr);
-		grid.setInputCloud(tgtCloudPtr);
-		grid.filter(*_tgtCloudPtr);
-	}
-	else {
-		_srcCloudPtr = srcCloudPtr;
-		_tgtCloudPtr = tgtCloudPtr;
-	}
-
-	pcl::IterativeClosestPoint<cloud::PointT, cloud::PointT> icp_nl;  //实例 ICP 对象
-	//icp_nl.setEuclideanFitnessEpsilon(1e-6);
-	icp_nl.setTransformationEpsilon(1e-6);  //设置两个临近变换的最大平方差
-	icp_nl.setMaxCorrespondenceDistance(0.15);  //设置源点与目标点的最大匹配距离(米)
-	//icp_nl.setPointRepresentation(pcl::make_shared<const MyPointRepresentation2>(point_representation));
-	icp_nl.setInputSource(_srcCloudPtr);
-	icp_nl.setInputTarget(_tgtCloudPtr);
-
-	//多次配准
-	Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity(), pre_transformation;
-	cloud::PointCloudPtr transCloudPtr = _srcCloudPtr;
-	icp_nl.setMaximumIterations(2);  //设置迭代次数
-	for (int i = 0; i < 5; ++i) {
-		icp_nl.setInputSource(_srcCloudPtr);
-		icp_nl.align(*transCloudPtr);
-		transformation = icp_nl.getFinalTransformation() * transformation;
-
-		if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()) {
-			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.005);
-		}
-		pre_transformation = transformation;
-		_srcCloudPtr = transCloudPtr;
-	}
-	final_transformation = transformation;
-	pcl::transformPointCloud(*srcCloudPtr, *resCloudPtr, final_transformation);
-	return 0;
-}
-
-int
-pairAlignWithCustom(
-	const cloud::PointNormalPfhPtr& srcCloudPtr,
-	const cloud::PointNormalPfhPtr& tgtCloudPtr,
-	cloud::PointCloudPtr& resCloudPtr,
-	Eigen::Matrix4f& final_transformation)
-{
-	//自定义 Point Representation
-	class MyPointRepresentationNormal :public pcl::PointRepresentation<cloud::PointNormalPfhT> {
-		using pcl::PointRepresentation<cloud::PointNormalPfhT>::nr_dimensions_;
-	public:
-		using Ptr = shared_ptr<MyPointRepresentationNormal>;
-		MyPointRepresentationNormal() {
-			nr_dimensions_ = 7;
-		}
-		virtual void copyToFloatArray(const cloud::PointNormalPfhT& p, float* out) const
-		{
-			out[0] = p.x;
-			out[1] = p.y;
-			out[2] = p.z;
-			//out[3] = p.data_n;
-			//out[4] = p.data_n[1];
-			//out[5] = p.data_n[2];
-			//out[6] = p.data_n[3];
-			//out[3] = p.pfh[0];
-			//out[4] = p.pfh[1];
-			//out[5] = p.pfh[2];
-			//out[6] = p.pfh[3];
-			//out[3] = p.curvature;
-		}
-	};
-
-	cloud::PointNormalPfhPtr _srcCloudPtr(new cloud::PointNormalPfh);  //源点云下采样
-	cloud::PointNormalPfhPtr _tgtCloudPtr(new cloud::PointNormalPfh);  //目标点云下采样
-	//下采样
-	_srcCloudPtr = srcCloudPtr;
-	_tgtCloudPtr = tgtCloudPtr;
-
-	MyPointRepresentationNormal::Ptr point_representation(new MyPointRepresentationNormal);
-	float alpha[7] = { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 };
-	//float alpha[3] = { 1.0, 1.0, 1.0 };
-	point_representation->setRescaleValues(alpha);
-
-	MyCorrespondenceEstimation<cloud::PointNormalPfhT, cloud::PointNormalPfhT>::Ptr
-		corrEstimation(new MyCorrespondenceEstimation<cloud::PointNormalPfhT, cloud::PointNormalPfhT>);
-	corrEstimation->setPointRepresentation(point_representation);
-	vector<float> weight = { 1.0, 1.0, 1.0, 1.0 , 1.0, 1.0, 1.0};
-	corrEstimation->setWeight(weight);
-
-	pcl::IterativeClosestPointNonLinear<cloud::PointNormalPfhT, cloud::PointNormalPfhT> icp_nl;  //实例 ICP 对象
-	//icp_nl.setEuclideanFitnessEpsilon(1e-6);
-	icp_nl.setTransformationEpsilon(1e-3);  //设置两个临近变换的最大平方差
-	icp_nl.setMaxCorrespondenceDistance(0.1);  //设置源点与目标点的最大匹配距离(米)
-	icp_nl.setPointRepresentation(point_representation);
-	icp_nl.setCorrespondenceEstimation(corrEstimation);
-	icp_nl.setInputSource(_srcCloudPtr);
-	icp_nl.setInputTarget(_tgtCloudPtr);
-
-	////多次配准
-	Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity(), pre_transformation;
-	cloud::PointNormalPfhPtr transCloudNormalPtr = _srcCloudPtr;
-	icp_nl.setMaximumIterations(2);  //设置迭代次数
-	for (int i = 0; i < 64; ++i) {
-		cout << i << "th align" << endl;
-		icp_nl.setInputSource(_srcCloudPtr);
-		icp_nl.align(*transCloudNormalPtr);
-		transformation = icp_nl.getFinalTransformation() * transformation;
-		//if (abs((icp_nl.getFinalTransformation() - pre_transformation).sum()) == 0) break;
-		if (abs((icp_nl.getLastIncrementalTransformation() - pre_transformation).sum()) < icp_nl.getTransformationEpsilon()) {
-			icp_nl.setMaxCorrespondenceDistance(icp_nl.getMaxCorrespondenceDistance() - 0.002);
-			cout << "setMaxCorrespondenceDistance" << icp_nl.getMaxCorrespondenceDistance() << endl;
-			if (icp_nl.getMaxCorrespondenceDistance() < 0)break;
-		}
-		pre_transformation = icp_nl.getLastIncrementalTransformation();
-		_srcCloudPtr = transCloudNormalPtr;
-		pcl::CorrespondencesPtr coors;
-		coors = icp_nl.correspondences_;
-		float sum = 0;
-		for (auto _coor : *coors) {
-			sum += pow(_srcCloudPtr->at(_coor.index_query).x - _tgtCloudPtr->at(_coor.index_match).x, 2.0) +
-				pow(_srcCloudPtr->at(_coor.index_query).y - _tgtCloudPtr->at(_coor.index_match).y, 2.0) +
-				pow(_srcCloudPtr->at(_coor.index_query).z - _tgtCloudPtr->at(_coor.index_match).z, 2.0);
-		}
-		sum /= coors->size();
-		cout << "MSE: " << sum << endl;
-		float _weight2 = pow(2.718, -1000.0 * sum * 0.368);
-		if (_weight2 > 0.9)_weight2 = 0.8;
-		else if (_weight2 < 0.1)_weight2 = 0.2;
-		float _weight1 = (1 - _weight2) / 3;
-		_weight2 /= 4;
-		for (int _j = 0; _j < weight.size(); ++_j) {
-			if (_j < 3) {
-				weight[_j] = _weight1;
-			}
-			else {
-				weight[_j] = _weight2;
-			}
-		}
-		corrEstimation->setWeight(weight);
-		cout << "================" << endl;
 	}
 	final_transformation = transformation;
 	cloud::PointCloudPtr _srcPointCloudPtr(new cloud::PointCloud);
@@ -937,18 +907,19 @@ registerPairsCloud(
  * @param[in]	is_auto				显示阻塞
  * @return		PCLVisualizer实例
 */
-pcl::visualization::PCLVisualizer
+pcl::visualization::PCLVisualizer::Ptr
 visualizePointCloud(
 	const cloud::PointCloudPtr& pointCloudPtr,
 	const cloud::Color pointColor,
 	const int pointSize,
 	const cloud::Color backgroundColor,
+	bool showCoordinateSystem,
 	bool is_auto)
 {
 	cloud::PointCloudPtrVec pointCloudPtrVec(1, pointCloudPtr);
 	vector<cloud::Color> pointColorVec(1, pointColor);
 	vector<int> pointSizeVec(1, pointSize);
-	return visualizePointCloud(pointCloudPtrVec, pointColorVec, pointSizeVec, backgroundColor, is_auto);
+	return visualizePointCloud(pointCloudPtrVec, pointColorVec, pointSizeVec, backgroundColor, showCoordinateSystem, is_auto);
 }
 
 /**
@@ -959,16 +930,17 @@ visualizePointCloud(
  * @param[in]	is_auto				显示阻塞
  * @return 
 */
-pcl::visualization::PCLVisualizer
+pcl::visualization::PCLVisualizer::Ptr
 visualizePointCloud(
 	const cloud::PointCloudPtrVec& pointCloudPtrVec,
 	vector<cloud::Color>& pointColorVec,
 	vector<int> pointSizeVec,
 	const cloud::Color& backgroundColor,
+	bool showCoordinateSystem,
 	bool is_auto)
 {
 	vector<pcl::PolygonMesh> meshVec;
-	return visualizePointCloud(pointCloudPtrVec, meshVec, pointColorVec, pointSizeVec, backgroundColor, is_auto);
+	return visualizePointCloud(pointCloudPtrVec, meshVec, pointColorVec, pointSizeVec, backgroundColor, showCoordinateSystem, is_auto);
 }
 
 /**
@@ -980,20 +952,21 @@ visualizePointCloud(
  * @param[in]	is_auto				显示阻塞
  * @return 
 */
-pcl::visualization::PCLVisualizer
+pcl::visualization::PCLVisualizer::Ptr
 visualizePointCloud(
 	const cloud::PointCloudPtr& pointCloudPtr,
 	const pcl::PolygonMesh& mesh,
 	const cloud::Color& pointColor,
 	int pointSize,
 	const cloud::Color& backgroundColor,
+	bool showCoordinateSystem,
 	bool is_auto)
 {
 	vector<cloud::PointCloudPtr> pointCloudPtrVec(1, pointCloudPtr);
 	vector<cloud::Color> pointColorVec(1, pointColor);
 	vector<int> pointSizeVec(1, pointSize);
 	vector<pcl::PolygonMesh> meshVec(1, mesh);
-	return visualizePointCloud(pointCloudPtrVec, meshVec, pointColorVec, pointSizeVec, backgroundColor, is_auto);
+	return visualizePointCloud(pointCloudPtrVec, meshVec, pointColorVec, pointSizeVec, backgroundColor, showCoordinateSystem, is_auto);
 }
 
 /**
@@ -1005,13 +978,14 @@ visualizePointCloud(
  * @param[in]		is_auto				显示阻塞
  * @return			PCLVisualizer实例
 */
-pcl::visualization::PCLVisualizer
+pcl::visualization::PCLVisualizer::Ptr
 visualizePointCloud(
 	const cloud::PointCloudPtrVec& pointCloudPtrVec,
 	const vector<pcl::PolygonMesh>& meshVec,
 	vector<cloud::Color>& pointColorVec,
 	vector<int> pointSizeVec,
 	const cloud::Color& backgroundColor,
+	bool showCoordinateSystem,
 	bool is_auto)
 {
 	using colorHandlerCustom = pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ>;
@@ -1133,6 +1107,11 @@ visualizePointCloud(
 				if (showIndex < pMeshIDVec->size())
 					pViewer->addPolygonMesh(pMeshVec->at(showIndex), pMeshIDVec->at(showIndex));
 			}
+			else if (keyboardEvent.getKeyCode() == 27) {
+				*((int*)args)=0;
+				args = nullptr;
+				cout << "close viewer" << endl;
+			}
 		}
 	};
 
@@ -1167,12 +1146,17 @@ visualizePointCloud(
 
 	//int* winSize = new int[2];
 	//int* winPos = new int[2];
-
-	pcl::visualization::PCLVisualizer viewer("viewer");
+	pcl::visualization::PCLVisualizer::Ptr pViewer(new pcl::visualization::PCLVisualizer("viewer"));
+	pcl::visualization::PCLVisualizer viewer = *pViewer;
 
 	viewer.setBackgroundColor(backgroundColor.r, backgroundColor.g, backgroundColor.b);	//设置背景
 	viewer.setShowFPS(false);
-	viewer.addCoordinateSystem();
+	if (showCoordinateSystem) {
+		viewer.addCoordinateSystem();
+	}
+	else {
+		viewer.removeCoordinateSystem();
+	}
 
 	vector<string> cloudIDVec;
 	vector<string> meshIDVec;
@@ -1191,7 +1175,8 @@ visualizePointCloud(
 	viewer.addText(pointPositionStr, text_xpos, text_ypos, fontsize, 0.0, 0.0, 1.0, textID); //添加文本
 	viewer.registerPointPickingCallback<PointPickingCallback>(&PointPickingCallback::callback, pointPickingCallback);	//注册三维点选取的回调函数
 	//viewer.registerAreaPickingCallback<AreaPickingCallback>(&AreaPickingCallback::callback, areaPickingCallback);
-	viewer.registerKeyboardCallback<KeyboardCallback>(&KeyboardCallback::callback, keyboardCallback);
+	int stopFlag = 1;
+	viewer.registerKeyboardCallback<KeyboardCallback>(&KeyboardCallback::callback, keyboardCallback, (void*)(&stopFlag));
 
 	for (int i = 0; i < pointCloudPtrVec.size(); ++i) {
 		colorHandlerCustom color(pointCloudPtrVec[i], pointColorVec[i].r, pointColorVec[i].g, pointColorVec[i].b);
@@ -1204,11 +1189,11 @@ visualizePointCloud(
 	}
 
 	if (is_auto) {
-		while (!viewer.wasStopped()) {
+		while ((!pViewer->wasStopped())&& stopFlag) {
 			viewer.spinOnce(20);
 		}
 	}
-	return viewer;
+	return pViewer;
 }
 
 /**
@@ -1218,7 +1203,7 @@ visualizePointCloud(
  * @return
 */
 int 
-creatMesh(
+creatMeshWithTri(
 	const cloud::PointCloudPtr& srcPointCloud,
 	pcl::PolygonMesh& trianglesMesh,
 	int maximumNearestNeighbors,
@@ -1227,15 +1212,36 @@ creatMesh(
 	double minimumAngle,
 	double maximumAngle,
 	double maximumSurfaceAngle,
-	bool normalConsistency)
+	bool normalConsistency,
+	bool usePointRepresentation)
 {
+	class MyPointRepresentation :public pcl::PointRepresentation<cloud::PointNormalT> {
+		using pcl::PointRepresentation<cloud::PointNormalT>::nr_dimensions_;
+	public:
+		using Ptr = shared_ptr<MyPointRepresentation>;
+		MyPointRepresentation() {
+			nr_dimensions_ = 3;
+		}
+		virtual void copyToFloatArray(const cloud::PointNormalT& p, float* out) const
+		{
+			out[0] = p.x;
+			out[1] = p.y;
+			out[2] = p.z;
+		}
+	};
+
 	pcl::PointCloud<pcl::Normal>::Ptr normalWithCurv(new pcl::PointCloud<pcl::Normal>);
-	normalEstimation(srcPointCloud, normalWithCurv, 20);
+	normalEstimation(srcPointCloud, normalWithCurv, 0,0.003);
 	cloud::PointCloudNormalPtr pointWithNormal(new cloud::PointCloudNormal);
 	pcl::concatenateFields(*srcPointCloud, *normalWithCurv, *pointWithNormal);
 
 	pcl::GreedyProjectionTriangulation<cloud::PointNormalT> gp3;
 	pcl::search::KdTree<cloud::PointNormalT>::Ptr searchTree(new pcl::search::KdTree<cloud::PointNormalT>);
+	if (usePointRepresentation) {
+		MyPointRepresentation::Ptr myPointRepresentationPtr(new MyPointRepresentation());
+		searchTree->setPointRepresentation(myPointRepresentationPtr);
+	}
+	searchTree->setInputCloud(pointWithNormal);
 
 	gp3.setSearchRadius(searchRadius); //设置三角形的最大边长
 	gp3.setMu(mu); //设置最近点的最大距离
@@ -1245,7 +1251,6 @@ creatMesh(
 	gp3.setMaximumSurfaceAngle(maximumSurfaceAngle);
 	gp3.setNormalConsistency(normalConsistency);
 
-	searchTree->setInputCloud(pointWithNormal);
 	gp3.setInputCloud(pointWithNormal);
 	gp3.setSearchMethod(searchTree);
 	gp3.reconstruct(trianglesMesh);
@@ -1253,7 +1258,6 @@ creatMesh(
 
 	return 0;
 }
-
 /**
  * @brief		利用泊松法表面重建
  * @param[in]	PointCloudPtr		输入点云
@@ -1291,11 +1295,11 @@ creatMeshPassion(
 	pn.setDepth(8);
 	//树的最大深度，求解2^d x 2^d x 2^d立方体元。
 	// 由于八叉树自适应采样密度，指定值仅为最大深度。
-	pn.setIsoDivide(8); //用于提取ISO等值面的算法的深度
+	pn.setIsoDivide(16); //用于提取ISO等值面的算法的深度
 	pn.setManifold(false); //是否添加多边形的重心，当多边形三角化时。 
 	// 设置流行标志，如果设置为true，则对多边形进行细分三角话时添加重心，设置false则不添加
 	pn.setOutputPolygons(false); //是否输出多边形网格（而不是三角化移动立方体的结果）
-	pn.setSamplesPerNode(15); //设置落入一个八叉树结点中的样本点的最小数量。无噪声，[1.0-5.0],有噪声[15.-20.]平滑
+	pn.setSamplesPerNode(5); //设置落入一个八叉树结点中的样本点的最小数量。无噪声，[1.0-5.0],有噪声[15.-20.]平滑
 	//pn.setScale(1.25); //设置用于重构的立方体直径和样本边界立方体直径的比率。
 	pn.setSolverDivide(8); //设置求解线性方程组的Gauss-Seidel迭代方法的深度
 	//pn.setIndices();
@@ -1787,3 +1791,405 @@ int SeparateBG(
 	return 0;
 }
 
+int fuseTwoPointClouds(
+	cloud::PointCloudPtr& cloud1,
+	cloud::PointCloudPtr& cloud2,
+	cloud::PointCloudPtr& resCloud,
+	float distance,
+	float edgeDistance,
+	float normaldistance)
+{
+	cloud::PointCloudPtr _cloud1(new cloud::PointCloud), _cloud2(new cloud::PointCloud);
+	pcl::copyPointCloud(*cloud1, *_cloud1);
+	pcl::copyPointCloud(*cloud2, *_cloud2);
+	fuseTwoPointClouds(_cloud1, _cloud2, distance, edgeDistance, normaldistance);
+	*resCloud = *_cloud1 + *_cloud2;
+	return 0;
+}
+
+int fuseTwoPointClouds(
+	cloud::PointCloudPtr& inCloud1,
+	cloud::PointCloudPtr& inCloud2,
+	cloud::PointCloudPtr& outCloud1,
+	cloud::PointCloudPtr& outCloud2,
+	float distance,
+	float edgeDistance,
+	float normaldistance)
+{
+	pcl::copyPointCloud(*inCloud1, *outCloud1);
+	pcl::copyPointCloud(*inCloud2, *outCloud2);
+	fuseTwoPointClouds(outCloud1, outCloud2, distance, edgeDistance, normaldistance);
+	return 0;
+}
+
+int fuseTwoPointClouds(
+	cloud::PointCloudPtr& cloud1,
+	cloud::PointCloudPtr& cloud2,
+	float distance,
+	float edgeDistance,
+	float normaldistance)
+{
+	cloud::PointCloudNormalPtr pointCloudNormalPtr1(new cloud::PointCloudNormal), pointCloudNormalPtr2(new cloud::PointCloudNormal);
+	pcl::PointIndices::Ptr edgeIndicesPtr(new pcl::PointIndices);
+	//cloud::NormalPtr normalPtr1(new cloud::Normal);
+	//cout << "法线估计" << endl;
+	normalEstimation(cloud1, pointCloudNormalPtr1, 0, normaldistance);
+	normalEstimation(cloud2, pointCloudNormalPtr2, 0, normaldistance);
+	//cout << "边缘检测" << endl;
+	edgeDetection(pointCloudNormalPtr1, edgeIndicesPtr, edgeDistance);
+	edgeDetection(pointCloudNormalPtr2, edgeIndicesPtr, edgeDistance);
+	//edgeViewer(pointCloudNormalPtr1);
+	//edgeViewer(pointCloudNormalPtr2);
+
+	pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+	kdtree.setInputCloud(cloud1);
+	kdtree.setSortedResults(true);
+	vector<int> indexSearch, _indices(cloud1->size(), -1);
+	vector<float> squareDisSearch;
+	pcl::PointIndices::Ptr cloud1_indices(new pcl::PointIndices()), cloud2_indices(new pcl::PointIndices());
+	cloud1_indices->indices.resize(cloud1->size());
+	cloud2_indices->indices.resize(cloud2->size());
+	size_t indices1Size = 0, indices2Size = 0;
+	float edgeCoefficient1, edgeCoefficient2, coe, disScale = 1.5;
+	//float maxDistance = disScale * distance;
+	float realDistance = 0.0f;
+	float temp = 0.0f;
+	Eigen::Vector3f edgeVec1, edgeVec2,tempVec3f;
+	//cout << "拼接" << endl;
+	for (size_t _index = 0; _index < cloud2->size(); ++_index) { //遍历cloud2
+		kdtree.radiusSearch((*cloud2)[_index], distance, indexSearch, squareDisSearch);
+		if (indexSearch.size()) { //cloud1与cloud2有重叠
+			realDistance = pow(squareDisSearch[0], 0.5f);
+			edgeCoefficient1 = (*pointCloudNormalPtr1)[indexSearch[0]].data_n[3];
+			edgeCoefficient2 = (*pointCloudNormalPtr2)[_index].data_n[3];
+			if (edgeCoefficient1){	//cloud2与cloud1边缘有重叠
+				//以cloud1的边缘系数为权重，计算两点加权值，设置cloud2点的位置
+				coe = edgeCoefficient1 * (edgeCoefficient1 / (edgeCoefficient2 + edgeCoefficient1));
+				coe = 1.0f - (1.0f - coe) * (1- (realDistance / distance));
+				for (size_t _xyzIndex = 0; _xyzIndex < 3; ++_xyzIndex) {
+					(*cloud2)[_index].data[_xyzIndex] = ((*cloud2)[_index].data[_xyzIndex]) * coe
+						+ (*pointCloudNormalPtr1)[indexSearch[0]].data[_xyzIndex] * (1-coe);
+				}
+				for (auto __index : indexSearch) {
+					tempVec3f = (*pointCloudNormalPtr1)[__index].getVector3fMap() 
+						- (*pointCloudNormalPtr2)[_index].getVector3fMap();
+					tempVec3f += (*pointCloudNormalPtr1)[__index].getNormalVector3fMap();
+					tempVec3f.normalize();
+					temp = (*pointCloudNormalPtr2)[_index].getNormalVector3fMap().dot(tempVec3f);
+					if(temp >0.9)_indices[__index] = __index; //cloud1边缘重叠的索引号放入滤除的indices中
+				}
+			}
+			else {//cloud2与cloud1内部有重叠
+				//cloud2索引号放入滤除的indices中
+				cloud2_indices->indices[indices2Size++] = _index;
+			}
+		}
+	}
+	for (auto _index : _indices) {
+		if (_index != -1 && (*pointCloudNormalPtr1)[_index].data_n[3]>0.0f) {
+			cloud1_indices->indices[indices1Size++] = _index;
+		}
+	}
+	cloud1_indices->indices.resize(indices1Size);
+	cloud2_indices->indices.resize(indices2Size);
+
+	pcl::ExtractIndices<pcl::PointXYZ> extract;
+	//去除cloud1边缘点
+	extract.setInputCloud(cloud1);
+	extract.setIndices(cloud1_indices);
+	extract.setNegative(true);
+	extract.filter(*cloud1);
+	//去除cloud2中与cloud1内部重叠的点
+	extract.setInputCloud(cloud2);
+	extract.setIndices(cloud2_indices);
+	extract.setNegative(true);
+	extract.filter(*cloud2);
+	//*resCloud += *cloud1;
+	return 0;
+}
+
+int fusePointClouds(
+	cloud::PointCloudPtrVec& inPointCloudPtrVec,
+	cloud::PointCloudPtr& outPointCloudPtr,
+	float distance,
+	float edgeDistance,
+	float normaldistance)
+{
+	//if (outPointCloudPtrVec.size() != inPointCloudPtrVec.size()) {
+	//	outPointCloudPtrVec.resize(inPointCloudPtrVec.size());
+	//}
+	//for (size_t _index = 0; _index < inPointCloudPtrVec.size(); ++_index) {
+	//	if (!outPointCloudPtrVec[_index]) outPointCloudPtrVec[_index] = std::make_shared<cloud::PointCloud>();
+	//	pcl::copyPointCloud(*(inPointCloudPtrVec[_index]), *(outPointCloudPtrVec[_index]));
+	//}
+	//cloud::PointCloudPtr outPointCloudPtr;
+	bool showInfo = true;
+	pcl::copyPointCloud(*(inPointCloudPtrVec[0]), *outPointCloudPtr);
+	for (size_t _index = 1; _index < inPointCloudPtrVec.size(); ++_index) {
+		if (showInfo) {
+			cout << endl;
+			cout << "\rfusing " << _index - 1 << "th and " << _index << "th " 
+				<< _index << "/" << inPointCloudPtrVec.size()-1 << endl;
+		}
+		fuseTwoPointClouds(outPointCloudPtr, inPointCloudPtrVec[_index], outPointCloudPtr, distance, edgeDistance, normaldistance);
+		visualizePointCloud(outPointCloudPtr, {255.0,255.0,255.0}, 3);
+	}
+	return 0;
+}
+
+int edgeDetection(
+	cloud::PointCloudNormalPtr& cloudPtr,
+	float distance) 
+{
+	pcl::PointIndices::Ptr edgeIndicesPtr(new pcl::PointIndices);
+	edgeDetection(cloudPtr, edgeIndicesPtr, distance);
+	return 0;
+}
+
+int edgeDetection(
+	cloud::PointCloudNormalPtr& cloudPtr,
+	pcl::PointIndices::Ptr& edgeIndicesPtr,
+	float distance) 
+{
+	//PointRepresentation，只取x，y，z数据
+	class MyPointRepresentation :public pcl::PointRepresentation<cloud::PointNormalT> {
+		using pcl::PointRepresentation<cloud::PointNormalT>::nr_dimensions_;
+	public:
+		using Ptr = shared_ptr<MyPointRepresentation>;
+		MyPointRepresentation() {
+			nr_dimensions_ = 3;
+		}
+		virtual void copyToFloatArray(const cloud::PointNormalT& p, float* out) const
+		{
+			out[0] = p.x;
+			out[1] = p.y;
+			out[2] = p.z;
+		}
+	};
+	int ii = 200;
+	pcl::KdTreeFLANN<cloud::PointNormalT> kdtree;
+	MyPointRepresentation::Ptr pointRepresentation(new MyPointRepresentation());
+	kdtree.setPointRepresentation(pointRepresentation);
+	kdtree.setInputCloud(cloudPtr);
+
+	vector<int> k_indices;
+	vector<float> k_sqr_distances;
+	Eigen::Vector3f normal_n, pointVec_n, edgeSign=Eigen::Vector3f::Zero(), crossTemp, _edgeSign;
+	pcl::PointNormal test;
+	float min = 0.15;
+	float max = 0.5;
+	size_t edgeIndicesIndex = 0;
+	edgeIndicesPtr->indices.resize(cloudPtr->size());
+	for (int _index = 0; _index < cloudPtr->size(); ++_index) {
+		kdtree.radiusSearch((*cloudPtr)[_index], distance, k_indices, k_sqr_distances); //查找指定点P0的半径distance内的点
+		normal_n = (*cloudPtr)[_index].getNormalVector3fMap(); //点的法线
+		edgeSign = Eigen::Vector3f::Zero();
+		for (size_t __index = 0; __index < k_indices.size(); ++__index) {
+			if (k_sqr_distances[__index]) { //不是该点本身的情况
+				pointVec_n = (*cloudPtr)[k_indices[__index]].getVector3fMap() - (*cloudPtr)[_index].getVector3fMap(); //求向量Pi - P0
+				//pointVec_n.normalize();
+				edgeSign += normal_n.cross(pointVec_n).cross(normal_n); //edgeSign += (pointVec_n向量) 在P0切平面上的投影
+				_edgeSign = edgeSign.normalized();
+				for (size_t _edgeSignIndex = 0; _edgeSignIndex < 3; ++_edgeSignIndex) {
+					(*cloudPtr)[_index].data_c[_edgeSignIndex] = _edgeSign[_edgeSignIndex];
+				}
+				//edgeSign += crossTemp.cross(normal_n);
+			}
+		}
+		if (k_indices.size()) { //P0附近有其他点
+			(*cloudPtr)[_index].data_n[3] = edgeSign.norm() / (float)k_indices.size() / distance; //计算边缘系数并归一化
+			// 边缘系数映射 [0,1] 映射到 [min,1]
+			if ((*cloudPtr)[_index].data_n[3] < min) {
+				(*cloudPtr)[_index].data_n[3] = 0.0f;
+			}
+			else if ((*cloudPtr)[_index].data_n[3] >= max) {
+				(*cloudPtr)[_index].data_n[3] = 1.0f;
+				edgeIndicesPtr->indices[edgeIndicesIndex++] = _index;
+			}
+			else {
+				(*cloudPtr)[_index].data_n[3] = ((*cloudPtr)[_index].data_n[3] - min) / (max - min);
+				edgeIndicesPtr->indices[edgeIndicesIndex++] = _index;
+			}
+		}
+		else { //P0附近无其他点
+			(*cloudPtr)[_index].data_n[3] = 1.0f;
+			edgeIndicesPtr->indices[edgeIndicesIndex++] = _index;
+		}
+	}
+	//edgeViewer(cloudPtr);
+	cloud::PointCloudNormal _cloudTemp;
+	pcl::copyPointCloud(*cloudPtr, _cloudTemp);
+	vector<float> weight;
+	float weightSum = 0, edgeSignTemp=0;
+	for (int _index = 0; _index < cloudPtr->size(); ++_index) {
+		kdtree.radiusSearch((*cloudPtr)[_index], distance, k_indices, k_sqr_distances, 4);
+		weight.resize(k_indices.size());
+		weightSum = 0;
+		for (size_t __index = 0; __index < k_indices.size(); ++__index) {
+			//weight[__index] = pow(2.71828, k_sqr_distances[__index] * -0.5f);
+			weight[__index] = gaussian(pow(k_sqr_distances[__index], 0.5f) * 1000.0f, 0.0f, 2.0f);
+			//cout << "weight[__index]:" << weight[__index] << endl;
+			weightSum += weight[__index];
+		}
+		if(weightSum)edgeSignTemp = 0.0f;
+		for (size_t __index = 0; __index < k_indices.size(); ++__index) {
+			edgeSignTemp += _cloudTemp[k_indices[__index]].data_n[3] * weight[__index] / weightSum;
+			//cout << (*cloudPtr)[_index].data_n[3] << endl;
+		}
+		(*cloudPtr)[_index].data_n[3] = edgeSignTemp;
+	}
+	return 0;
+}
+
+int edgeViewer(
+	cloud::PointCloudNormalPtr pointCloudNormalPtr)
+{
+	pcl::PointCloud<pcl::PointXYZRGB> pointRGB;
+	pointRGB.resize(pointCloudNormalPtr->size());
+	for (int _index = 0; _index < pointCloudNormalPtr->size(); ++_index) {
+		pcl::copyPoint(pointCloudNormalPtr->at(_index), pointRGB[_index]);
+		pointRGB[_index].r = 255 - (*pointCloudNormalPtr)[_index].data_n[3] * 255;
+		pointRGB[_index].b = 255 - (*pointCloudNormalPtr)[_index].data_n[3] * 255;
+		pointRGB[_index].g = 255;
+	}
+	pcl::visualization::PCLVisualizer viewer("3D Viewer");
+	viewer.addPointCloud(pointRGB.makeShared());
+	viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3);
+	while (!viewer.wasStopped())
+	{
+		viewer.spinOnce(100);
+	}
+
+	return 0;
+}
+
+float gaussian(
+	float x,
+	float u,
+	float sigma)
+{
+	float result = (x - u) / sigma;
+	result = result * result * -0.5f;
+	result = pow(2.71828, result) / sigma / pow(2 * 3.14159, 0.5);
+	return result;
+}
+
+float getResolution(
+	cloud::PointCloudPtr pointCloudPtr)
+{
+	pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+	vector<int> pointIdx(2);
+	vector<float> pointSquaredDistance(2);
+	float sumDis = 0.0f;
+
+	kdtree.setInputCloud(pointCloudPtr);
+	kdtree.setSortedResults(true);
+	for (size_t _index = 0; _index < pointCloudPtr->size(); ++_index) {
+		kdtree.nearestKSearch((*pointCloudPtr).points[_index], 2, pointIdx, pointSquaredDistance);
+		sumDis += pow(pointSquaredDistance[1], 0.5f);
+	}
+	return sumDis / (float)pointCloudPtr->size();
+}
+
+void 
+NDTpair(
+	cloud::PointCloudPtr srcPointCloudPtr,
+	cloud::PointCloudPtr tgtPointCloudPtr,
+	cloud::PointCloudPtr resPointCloudPtr,
+	Eigen::Matrix4f& final_transformation,
+	float transformationEpsilon,
+	float stepSize,
+	float resolution)
+{
+	cloud::PointCloudPtr filtered_cloud(new cloud::PointCloud);
+	pcl::ApproximateVoxelGrid<pcl::PointXYZ> approximate_voxel_filter;
+	approximate_voxel_filter.setLeafSize(0.005, 0.005, 0.005);
+	approximate_voxel_filter.setInputCloud(srcPointCloudPtr);
+	approximate_voxel_filter.filter(*filtered_cloud);
+
+	pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> ndt;
+
+	ndt.setTransformationEpsilon(transformationEpsilon);
+	ndt.setStepSize(stepSize);
+	ndt.setResolution(getResolution(filtered_cloud));
+	ndt.setMaximumIterations(256);
+	ndt.setInputSource(filtered_cloud);
+	ndt.setInputTarget(tgtPointCloudPtr);
+	ndt.align(*resPointCloudPtr);
+	final_transformation = ndt.getFinalTransformation();
+}
+
+cloud::OBBT getOBB(
+	cloud::PointCloudPtr cloudPtr) 
+{
+	cloud::OBBT obb;
+	pcl::MomentOfInertiaEstimation<cloud::PointT> feature_extractor;
+	feature_extractor.setInputCloud(cloudPtr);
+	feature_extractor.compute();
+	feature_extractor.getOBB(obb.min, obb.max, obb.poistion, obb.rotation);
+	return obb;
+}
+
+void boxToPointCloud(
+	const cloud::OBBT& box,
+	cloud::PointCloudPtr& cloudPtr)
+{
+	cloudPtr->resize(8);
+	float widthOBB = box.max.x - box.min.x;
+	float heightOBB = box.max.y - box.min.y;
+	float depthOBB = box.max.z - box.min.z;
+	int xx = 1, yy = 1, zz = 1;
+	for (int _index = 0; _index < 8; ++_index) {
+		cloudPtr->at(_index).x = xx * widthOBB / 2.0;
+		cloudPtr->at(_index).y = yy * heightOBB / 2.0;
+		cloudPtr->at(_index).z = zz * depthOBB / 2.0;
+		xx *= -1;
+		if ((_index + 1) % 2 == 0)yy *= -1;
+		if ((_index + 1) % 4 == 0)zz *= -1;
+	}
+	Eigen::Matrix4f trans;
+	Eigen::Translation3f translation(box.poistion.x, box.poistion.y, box.poistion.z);
+	Eigen::Quaternionf quat(box.rotation);
+	trans = (translation * quat).matrix();
+	pcl::transformPointCloud(*cloudPtr, *cloudPtr, trans);
+}
+
+Eigen::Matrix4f getTransFromOBBT(
+	cloud::OBBT box)
+{
+	Eigen::Translation3f translation(box.poistion.x, box.poistion.y, box.poistion.z);
+	Eigen::Quaternionf quat(box.rotation);
+	return (translation * quat).matrix();
+}
+
+void segmenteByDis(
+	cloud::PointCloudPtr& inCloudPtr,
+	cloud::PointCloudPtrVec& outCloudPtrVec,
+	float dis,
+	int min_num,
+	int max_num)
+{
+	pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>);
+	tree->setInputCloud(inCloudPtr);
+	std::vector<pcl::PointIndices> cluster_indices;
+	pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+	if (dis <= 0)ec.setClusterTolerance(getResolution(inCloudPtr) * 2);
+	else ec.setClusterTolerance(dis);
+	ec.setMinClusterSize(min_num);
+	ec.setMaxClusterSize(max_num);
+	ec.setSearchMethod(tree);
+	ec.setInputCloud(inCloudPtr);
+	ec.extract(cluster_indices);
+
+	outCloudPtrVec.clear();
+	for (vector<pcl::PointIndices>::const_iterator indicesIt = cluster_indices.begin(); indicesIt != cluster_indices.end(); ++indicesIt) {
+		cloud::PointCloudPtr tempPtr(new cloud::PointCloud);
+		for (vector<int>::const_iterator indexIt = indicesIt->indices.begin(); indexIt != indicesIt->indices.end(); ++indexIt) {
+			tempPtr->push_back(inCloudPtr->points[*indexIt]);
+		}
+		tempPtr->width = tempPtr->size();
+		tempPtr->height = 1;
+		tempPtr->is_dense = true;
+		outCloudPtrVec.push_back(tempPtr);
+	}
+}

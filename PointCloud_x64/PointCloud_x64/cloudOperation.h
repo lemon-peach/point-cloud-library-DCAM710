@@ -1,5 +1,30 @@
 #pragma once
-//#define PCL_NO_PRECOMPILE
+#include <pcl/point_types.h>
+struct EIGEN_ALIGN16 CustomPointT
+{
+	PCL_ADD_POINT4D;                  // preferred way of adding a XYZ+padding
+	float data_additional[10] = {0.f};
+	inline CustomPointT(float _x, float _y, float _z) {
+		x = _x;
+		y = _y;
+		z = _z;
+		data[3] = 0.f;
+	}
+	inline CustomPointT() :CustomPointT(0.0f, 0.0f, 0.0f) {};
+	inline CustomPointT(const CustomPointT& _p) :CustomPointT(_p.x, _p.y, _p.z) {};
+	friend std::ostream& operator <<(std::ostream os, CustomPointT& p) {
+		return os;
+	}
+	PCL_MAKE_ALIGNED_OPERATOR_NEW     // make sure our new allocators are aligned
+};                   // enforce SSE padding for correct memory alignment
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(CustomPointT,           // here we assume a XYZ + "test" (as fields)
+	(float, x, x)
+	(float, y, y)
+	(float, z, z)
+	(float[10], data_additional, data_additional)
+)
+
 #include <ctime>
 #include <iostream>
 #include <fstream>
@@ -9,23 +34,24 @@
 
 #include <pcl/memory.h>
 #include <pcl/pcl_macros.h>
-//#include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
-//#include <pcl/io/pcd_io.h>
 
 #include <pcl/ModelCoefficients.h>
 #include <pcl/io/pcd_io.h>
+#include <pcl/io/ply_io.h>
 #include <pcl/types.h>
 #include <pcl/point_types.h>
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/segmentation/extract_clusters.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/visualization/cloud_viewer.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/visualization/common/common.h>
 #include <pcl/registration/icp.h>
+#include <pcl/registration/ndt.h>
 #include <pcl/registration/impl/icp.hpp>
 #include <pcl/features/normal_3d.h>
 #include <pcl/registration/icp_nl.h>
@@ -35,6 +61,7 @@
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/fast_bilateral.h>
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/approximate_voxel_grid.h>
 #include <pcl/range_image/range_image.h>
 #include <pcl/visualization/range_image_visualizer.h>
 #include <pcl/keypoints/narf_keypoint.h>
@@ -42,8 +69,10 @@
 #include <pcl/features/range_image_border_extractor.h>
 #include <pcl/surface/poisson.h>
 #include <pcl/features/pfh.h>
+#include <pcl/features/moment_of_inertia_estimation.h>
 #include <pcl/correspondence.h>
 #include <pcl/visualization/pcl_plotter.h>
+#include <pcl/io/vtk_lib_io.h >
 #include <Eigen/SVD>
 #include <Eigen/Core>
 #include "function.h"
@@ -71,51 +100,23 @@ namespace cloud{
 		double r, g, b;
 	}Color;
 
-	//Color redPoint = { 255.0, 0.0, 0.0 };
-	//Color greenPoint = { 0.0, 255.0, 0.0 };
-	//Color bluePoint = { 0.0, 0.0, 255.0 };
-	//Color yellowPoint = { 255.0, 255.0, 0.0 };
-	//Color purplePoint = { 255.0, 0.0, 255.0 };
-	//Color cyanPoint = { 255.0, 0.0, 255.0 };
-	//Color whitePoint = { 255.0, 255.0, 255.0 };
-	//vector<Color> colorVec = { redPoint, greenPoint, bluePoint, yellowPoint, purplePoint, cyanPoint };
-	//vector<Color> colorWhiteVec = { whitePoint };
-
-	//struct PointNormalPfhT {
-	//	union
-	//	{
-	//		float data[4];
-	//		struct
-	//		{
-	//			float x;
-	//			float y;
-	//			float z;
-	//		};
-	//	};
-	//	union
-	//	{
-	//		float data_n[4];
-	//		float normal[3];
-	//		struct
-	//		{
-	//			float normal_x;
-	//			float normal_y;
-	//			float normal_z;
-	//			float curvature;
-	//		};
-	//	};
-	//	struct 
-	//	{
-	//		Eigen::VectorXf pfh;
-	//	};
-	//};
-	using PointNormalPfhT = pcl::PointNormal;
+	using PointNormalPfhT = CustomPointT;
 	//using PointNormalPfhT = PointNormalPfhTp;
 	using PointNormalPfh = pcl::PointCloud<PointNormalPfhT>;
 	using PointNormalPfhPtr = PointNormalPfh::Ptr;
 	using PointNormalPfhPtrVec = vector<PointNormalPfhPtr, Eigen::aligned_allocator<PointNormalPfhT>>;
 
+	using PointWithEdgeSignT = pcl::PointXYZI;
+	using PointWithEdgeSign = pcl::PointCloud<PointWithEdgeSignT>;
+	using PointWithEdgeSignPtr = pcl::PointCloud<PointWithEdgeSignT>::Ptr;
+
 	using PFH27 = pcl::Histogram<27>;
+	typedef struct {
+		pcl::PointXYZ min;
+		pcl::PointXYZ max;
+		pcl::PointXYZ poistion;
+		Eigen::Matrix3f rotation;
+	}OBBT;
 }
 
 /**
@@ -134,12 +135,13 @@ pclViewerTest(string filePath);
  * @param[in]	is_auto				显示阻塞
  * @return		PCLVisualizer实例
 */
-pcl::visualization::PCLVisualizer
+pcl::visualization::PCLVisualizer::Ptr
 visualizePointCloud(
 	const cloud::PointCloudPtr& pointCloud,
 	const cloud::Color pointColor = { 255.0, 255.0, 255.0 },
 	const int pointSize = 1,
 	const cloud::Color backgroundColor = { 0.0, 0.0, 0.0 },
+	bool showCoordinateSystem = true,
 	bool is_auto = true);
 
 /**
@@ -150,12 +152,13 @@ visualizePointCloud(
  * @param[in]		is_auto				显示阻塞
  * @return			PCLVisualizer实例
 */
-pcl::visualization::PCLVisualizer
+pcl::visualization::PCLVisualizer::Ptr
 visualizePointCloud(
 	const cloud::PointCloudPtrVec& pointCloudPtrVec,
 	vector<cloud::Color>& pointColorVec,
 	vector<int> pointSizeVec = {1},
 	const cloud::Color& backgroundColor = { 0.0, 0.0, 0.0 },
+	bool showCoordinateSystem = true,
 	bool is_auto = true);
 
 /**
@@ -167,13 +170,14 @@ visualizePointCloud(
  * @param[in]	is_auto				显示阻塞
  * @return
 */
-pcl::visualization::PCLVisualizer
+pcl::visualization::PCLVisualizer::Ptr
 visualizePointCloud(
 	const cloud::PointCloudPtr& pointCloudPtr,
 	const pcl::PolygonMesh& mesh,
 	const cloud::Color& pointColor = { 255.0, 255.0, 255.0 },
 	int pointSize = 1,
 	const cloud::Color& backgroundColor = { 0.0, 0.0, 0.0 },
+	bool showCoordinateSystem = true,
 	bool is_auto = true);
 
 /**
@@ -185,13 +189,14 @@ visualizePointCloud(
  * @param[in]		is_auto				显示阻塞
  * @return			PCLVisualizer实例
 */
-pcl::visualization::PCLVisualizer
+pcl::visualization::PCLVisualizer::Ptr
 visualizePointCloud(
 	const cloud::PointCloudPtrVec& pointCloudPtrVec,
 	const vector<pcl::PolygonMesh>& meshVec,
 	vector<cloud::Color>& pointColorVec,
 	vector<int> pointSizeVec = {1},
 	const cloud::Color& backgroundColor = { 0.0, 0.0, 0.0 },
+	bool showCoordinateSystem = true,
 	bool is_auto = true);
 
 /**
@@ -325,7 +330,8 @@ pairAlignWithNormal(
 	bool downSample = false,
 	float downSampleSize = 0.005f,
 	float maxDis = 0.02,
-	bool useMyEm=false);
+	bool useMyEm=false,
+	bool edgeFilter = false);
 
 /**
  * @brief		配准：计算源点云到目标点云的变换矩阵，根据点进行配准
@@ -342,14 +348,20 @@ pairAlign(
 	const cloud::PointCloudPtr& tgtCloudPtr,
 	cloud::PointCloudPtr& resCloudPtr,
 	Eigen::Matrix4f& final_transformation,
-	bool downSample = false);
+	bool downSample = false,
+	float downSampleSize = 0.005f,
+	float maxDis = 0.05);
 
 int
 pairAlignWithCustom(
 	const cloud::PointNormalPfhPtr& srcCloudPtr,
 	const cloud::PointNormalPfhPtr& tgtCloudPtr,
 	cloud::PointCloudPtr& resCloudPtr,
-	Eigen::Matrix4f& final_transformation);
+	Eigen::Matrix4f& final_transformation,
+	bool downSample = false,
+	float downSampleSize = 0.005f,
+	float maxDis = 0.02,
+	bool useMyEm = false);
 
 /**
  * @brief		多个点云配准，将多个点云转换到第一个点云的坐标系
@@ -390,7 +402,7 @@ registerPairsCloud(
  * @return 
 */
 int
-creatMesh(
+creatMeshWithTri(
 	const cloud::PointCloudPtr& srcPointCloud,
 	pcl::PolygonMesh& trianglesMesh,
 	int maximumNearestNeighbors = 100,
@@ -399,7 +411,8 @@ creatMesh(
 	double minimumAngle = M_PI / 18,
 	double maximumAngle = 2 * M_PI / 3,
 	double maximumSurfaceAngle = M_PI_4,
-	bool normalConsistency = false);
+	bool normalConsistency = false,
+	bool usePointRepresentation = true);
 
 /**
  * @brief		利用泊松法表面重建
@@ -589,7 +602,8 @@ inline int savePointPCDs(
 	string basePath,
 	vector<string> nameVec,
 	string prefix,
-	string suffix)
+	string suffix,
+	bool saveASCII)
 {
 	for (int _i = 0; _i < pointCloudPtrVec.size(); ++_i) {
 		string path(basePath);
@@ -598,26 +612,57 @@ inline int savePointPCDs(
 		path.append(nameVec[_i]);
 		path.append(suffix);
 		path.append(".pcd");
-		pcl::io::savePCDFileASCII<PointT>(path, *(pointCloudPtrVec[_i]));
+		if(saveASCII)pcl::io::savePCDFileASCII<PointT>(path, *(pointCloudPtrVec[_i]));
+		else pcl::io::savePCDFileBinary<PointT>(path, *(pointCloudPtrVec[_i]));
 	}
 	return 0;
 }
 
+/**
+ * @brief 保存多个点云到PCD文件
+ * @tparam		PointT				点云类型
+ * @param[in]	pointCloudPtrVec	要保存的点云向量
+ * @param[in]	basePath			保存的路径
+ * @param[in]	prefix				名字前缀
+ * @param[in]	suffix				名字后缀，不含.后面的扩展名字
+ * @return 
+*/
 template<typename PointT>
 inline int savePointPCDs(
 	vector<typename pcl::PointCloud<PointT>::Ptr>& pointCloudPtrVec,
 	string basePath,
 	string prefix,
-	string suffix)
+	string suffix,
+	bool saveASCII)
 {
-	vector<string> nameVec;
-	for (int _i = 0; _i < pointCloudPtrVec.size(); ++_i) {
-		nameVec.push_back(to_string(_i));
+	int indexStrSzie = 4;
+	if (pointCloudPtrVec.size() > 10000) {
+		int _temp = pointCloudPtrVec.size()/10000;
+		while (_temp > 0) {
+			++indexStrSzie;
+			_temp /= 10;
+		}
 	}
-	savePointPCDs<PointT>(pointCloudPtrVec, basePath, nameVec, prefix, suffix);
+	vector<string> nameVec(pointCloudPtrVec.size(), string(indexStrSzie, '0'));
+	string indexStr;
+	for (int _i = 0; _i < pointCloudPtrVec.size(); ++_i) {
+		indexStr = to_string(_i);
+		nameVec[_i].replace(indexStrSzie - indexStr.size(), indexStr.size(), indexStr);
+	}
+	for (auto& _ : nameVec) {
+		cout << _ << endl;
+	}
+	savePointPCDs<PointT>(pointCloudPtrVec, basePath, nameVec, prefix, suffix, saveASCII);
 	return 0;
 }
 
+/**
+ * @brief 加载当前路径下的所有pcd文件
+ * @tparam		PointT				点的类型
+ * @param[out]	pointCloudPtrVec	存储加载的点云向量
+ * @param[in]	basePath			路径
+ * @return 
+*/
 template<typename PointT>
 inline int loadPointPcds(
 	vector<typename pcl::PointCloud<PointT>::Ptr>& pointCloudPtrVec,
@@ -643,8 +688,141 @@ int SeparateBG(
 	const cloud::PointCloudPtr inPointCloudPtr,
 	cloud::PointCloudPtr& out);
 
+/**
+ * @brief 去除超过视角范围的点
+ * @param[in]	inPointCloudPtr		输入点云
+ * @param[out]	out					输出点云
+ * @param[in]	angle				视角大小
+ * @param[in]	negative			去除相反的点
+ * @return 
+*/
 int SeparateView(
 	const cloud::PointCloudPtr inPointCloudPtr,
 	cloud::PointCloudPtr& out,
 	float angle = 45,
 	bool negative = false);
+
+/**
+ * @brief	拼接两个点云，融合重叠区域
+ *			cloud1内部重叠区域直接保留，cloud1边缘重叠区域计算加权值
+ * @param[in]	cloud1		拼接点云1
+ * @param[in]	cloud2		拼接点云2
+ * @param[out]	resCloud	两幅点云拼接结果
+ * @param[in]	distance	重叠区域检测距离阈值
+ * @return 
+*/
+int fuseTwoPointClouds(
+	cloud::PointCloudPtr& cloud1,
+	cloud::PointCloudPtr& cloud2,
+	cloud::PointCloudPtr& resCloud,
+	float distance = 0.002f,
+	float edgeDistance = 0.01f,
+	float normaldistance = 0.005f);
+
+/**
+ * @brief	拼接两个点云，融合重叠区域
+ *			cloud1内部重叠区域直接保留，cloud1边缘重叠区域计算加权值
+ * @param[in]	inCloud1	拼接点云1
+ * @param[in]	inCloud2	拼接点云2
+ * @param[out]	outCloud1	点云1拼接结果
+ * @param[out]	outCloud2	点云2拼接结果
+ * @param[in]	distance	重叠区域检测距离阈值
+ * @return 
+*/
+int fuseTwoPointClouds(
+	cloud::PointCloudPtr& inCloud1,
+	cloud::PointCloudPtr& inCloud2,
+	cloud::PointCloudPtr& outCloud1,
+	cloud::PointCloudPtr& outCloud2,
+	float distance = 0.002f,
+	float edgeDistance = 0.01f,
+	float normaldistance = 0.005f);
+
+/**
+ * @brief	拼接两个点云，融合重叠区域
+ *			cloud1内部重叠区域直接保留，cloud1边缘重叠区域计算加权值
+ * @param[in][out]	cloud1		in 拼接点云1，out 点云1拼接结果
+ * @param[in][out]	cloud2		in 拼接点云2，out 点云2拼接结果
+ * @param[in]		distance	重叠区域检测距离阈值
+ * @return 
+*/
+int fuseTwoPointClouds(
+	cloud::PointCloudPtr& cloud1,
+	cloud::PointCloudPtr& cloud2,
+	float distance= 0.002f,
+	float edgeDistance = 0.01f,
+	float normaldistance = 0.005f);
+
+/**
+ * @brief 
+ * @param inPointCloudPtrVec 
+ * @param outPointCloudPtr 
+ * @param distance 
+ * @return 
+*/
+int fusePointClouds(
+	cloud::PointCloudPtrVec& inPointCloudPtrVec,
+	cloud::PointCloudPtr& outPointCloudPtr,
+	float distance = 0.002f,
+	float edgeDistance = 0.01f,
+	float normaldistance = 0.005f);
+
+int edgeDetection(
+	cloud::PointCloudNormalPtr& cloudPtr,
+	float distance = 0.005f);
+
+/**
+ * @brief 检测边缘点并设置边缘系数
+ * @param[in][out]	cloudPtr			输入点云（需要包含法线信息），边缘系数存储于data_n[3]中
+ * @param[out]		edgeIndicesPtr		位于边缘的点的索引
+ * @param[in]		distance			边缘检测距离
+ * @return 
+*/
+int edgeDetection(
+	cloud::PointCloudNormalPtr& cloudPtr,
+	pcl::PointIndices::Ptr& edgeIndicesPtr,
+	float distance = 0.005f);
+
+
+int edgeViewer(
+	cloud::PointCloudNormalPtr pointCloudNormalPtr);
+
+float gaussian(
+	float x,
+	float u,
+	float sigma);
+
+/**
+ * @brief 计算点云分辨率
+ * @param pointCloudPtr		输入点云
+ * @return					分辨率
+*/
+float getResolution(
+	cloud::PointCloudPtr pointCloudPtr);
+
+void
+NDTpair(
+	cloud::PointCloudPtr srcPointCloudPtr,
+	cloud::PointCloudPtr tgtPointCloudPtr,
+	cloud::PointCloudPtr resPointCloudPtr,
+	Eigen::Matrix4f& final_transformation,
+	float transformationEpsilon = 0.01f,
+	float stepSize = 0.1f,
+	float resolution = 1.0f);
+
+cloud::OBBT getOBB(
+	cloud::PointCloudPtr cloudPtr);
+
+void boxToPointCloud(
+	const cloud::OBBT& box,
+	cloud::PointCloudPtr& cloudPtr);
+
+Eigen::Matrix4f getTransFromOBBT(
+	cloud::OBBT box);
+
+void segmenteByDis(
+	cloud::PointCloudPtr& inCloudPtr,
+	cloud::PointCloudPtrVec& outCloudPtrVec,
+	float dis = 0.0,
+	int min_num = 100,
+	int max_num = 1000000);
