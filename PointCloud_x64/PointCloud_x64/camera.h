@@ -136,4 +136,14 @@ void depthToPointCloud(
 	float f,
 	float dx,
 	float dy);
+
+void flyingPixel(
+	PsDeviceHandle& deviceHandle,
+	uint32_t sessionIndex,
+	PsFrame& depthFrame,
+	uint32_t slpoe);
+
+void getNormal(
+	Eigen::MatrixXf matrix,
+	Eigen::Vector3f& normal);
 #endif // __MAIN_H__

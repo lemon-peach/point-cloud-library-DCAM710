@@ -210,7 +210,9 @@ int openAndConfigCamera(PsDeviceHandle& deviceHandle, uint32_t sessionIndex, PsW
 		slope.slope1 = getSlope(depth_Range, measuringRange);
 		slope.range_num = 1;
 	}
-	Ps2_SetDepthDistortionCorrectionEnabled(deviceHandle, sessionIndex, false);
+	Ps2_SetDepthDistortionCorrectionEnabled(deviceHandle, sessionIndex, true);
+	Ps2_SetTimeFilterEnabled(deviceHandle, sessionIndex, true);
+	Ps2_SetSpatialFilterEnabled(deviceHandle, sessionIndex, false);
 	return PsReturnStatus::PsRetOK;
 }
 
@@ -309,6 +311,7 @@ getRealTimePointClouds(
 			else {
 				//显示深度图像
 				if (showDepthImage) {
+					
 					Opencv_Depth(slope.slope1, depthFrame.height, depthFrame.width, depthFrame.pFrameData, imageMat);
 					cv::imshow("实时深度图像", imageMat);
 					/*cv::Mat _testImg = cv::Mat(depthFrame.height, depthFrame.width, CV_16UC1, depthFrame.pFrameData);
@@ -405,72 +408,72 @@ getRealTimePointClouds(
 				//开始保存
 				if (saveStart && (Index % interval == 1 || !auto_update)) {
 					cout << "save===========================" << endl;
-
+					flyingPixel(deviceHandle, sessionIndex, depthFrame, slope.slope1);
 					cv::Mat _testImg = cv::Mat(depthFrame.height, depthFrame.width, CV_16UC1, depthFrame.pFrameData);
-					vector<int> weight;
-					weight.resize(4);
-					vector<vector<int>> neighborPixle;
-					neighborPixle.resize(4);
-					cv::Point2d pointxy(0, 0);
-					for (auto& _v : neighborPixle) {
-						_v.resize(2);
-					}
-					for (int _row = 0; _row < _testImg.rows; ++_row) {
-						for (int _col = 0; _col < _testImg.cols; ++_col) {
-							if (_testImg.at<ushort>(_row, _col) == 0 || _testImg.at<ushort>(_row, _col) == 65535) {
-								int _r = _row;
-								int _c = _col - 1;
-								while (_c >= 0 && _r >= 0 && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
-									--_c;
-								}
-								neighborPixle[0][0] = _r;
-								neighborPixle[0][1] = _c;
-								_r = _row - 1;
-								_c = _col;
-								while (_c >= 0 && _r >= 0 && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
-									--_r;
-								}
-								neighborPixle[1][0] = _r;
-								neighborPixle[1][1] = _c;
-								_r = _row;
-								_c = _col + 1;
-								while (_c < _testImg.cols && _r < _testImg.rows && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
-									++_c;
-								}
-								if (_c < _testImg.cols && _r < _testImg.rows) {
-									neighborPixle[2][0] = _r;
-									neighborPixle[2][1] = _c;
-								}
-								else {
-									neighborPixle[2][0] = -1;
-									neighborPixle[2][1] = -1;
-								}
-								_r = _row + 1;
-								_c = _col;
-								while (_c < _testImg.cols && _r < _testImg.rows && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
-									++_r;
-								}
-								if (_c < _testImg.cols && _r < _testImg.rows) {
-									neighborPixle[3][0] = _r;
-									neighborPixle[3][1] = _c;
-								}
-								else {
-									neighborPixle[3][0] = -1;
-									neighborPixle[3][1] = -1;
-								}
-								vector<float> weight;
-								float __temp = 0;
-								calcWeight(neighborPixle, { _row, _col }, weight);
-								for (int _index = 0; _index < neighborPixle.size(); ++_index) {
-									if (weight[_index] != 0) {
-										//cout << neighborPixle[_index][0]<<", "<<neighborPixle[_index][1] << endl;
-										__temp += weight[_index] * _testImg.at<ushort>(neighborPixle[_index][0], neighborPixle[_index][1]);
-									}
-								}
-								_testImg.at<ushort>(_row, _col) = (uint16_t)__temp;
-							}
-						}
-					}
+					//vector<int> weight;
+					//weight.resize(4);
+					//vector<vector<int>> neighborPixle;
+					//neighborPixle.resize(4);
+					//cv::Point2d pointxy(0, 0);
+					//for (auto& _v : neighborPixle) {
+					//	_v.resize(2);
+					//}
+					//for (int _row = 0; _row < _testImg.rows; ++_row) {
+					//	for (int _col = 0; _col < _testImg.cols; ++_col) {
+					//		if (_testImg.at<ushort>(_row, _col) == 0 || _testImg.at<ushort>(_row, _col) == 65535) {
+					//			int _r = _row;
+					//			int _c = _col - 1;
+					//			while (_c >= 0 && _r >= 0 && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
+					//				--_c;
+					//			}
+					//			neighborPixle[0][0] = _r;
+					//			neighborPixle[0][1] = _c;
+					//			_r = _row - 1;
+					//			_c = _col;
+					//			while (_c >= 0 && _r >= 0 && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
+					//				--_r;
+					//			}
+					//			neighborPixle[1][0] = _r;
+					//			neighborPixle[1][1] = _c;
+					//			_r = _row;
+					//			_c = _col + 1;
+					//			while (_c < _testImg.cols && _r < _testImg.rows && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
+					//				++_c;
+					//			}
+					//			if (_c < _testImg.cols && _r < _testImg.rows) {
+					//				neighborPixle[2][0] = _r;
+					//				neighborPixle[2][1] = _c;
+					//			}
+					//			else {
+					//				neighborPixle[2][0] = -1;
+					//				neighborPixle[2][1] = -1;
+					//			}
+					//			_r = _row + 1;
+					//			_c = _col;
+					//			while (_c < _testImg.cols && _r < _testImg.rows && (_testImg.at<ushort>(_r, _c) == 0 || _testImg.at<ushort>(_r, _c) == 65535)) {
+					//				++_r;
+					//			}
+					//			if (_c < _testImg.cols && _r < _testImg.rows) {
+					//				neighborPixle[3][0] = _r;
+					//				neighborPixle[3][1] = _c;
+					//			}
+					//			else {
+					//				neighborPixle[3][0] = -1;
+					//				neighborPixle[3][1] = -1;
+					//			}
+					//			vector<float> weight;
+					//			float __temp = 0;
+					//			calcWeight(neighborPixle, { _row, _col }, weight);
+					//			for (int _index = 0; _index < neighborPixle.size(); ++_index) {
+					//				if (weight[_index] != 0) {
+					//					//cout << neighborPixle[_index][0]<<", "<<neighborPixle[_index][1] << endl;
+					//					__temp += weight[_index] * _testImg.at<ushort>(neighborPixle[_index][0], neighborPixle[_index][1]);
+					//				}
+					//			}
+					//			_testImg.at<ushort>(_row, _col) = (uint16_t)__temp;
+					//		}
+					//	}
+					//}
 					_testImg.convertTo(_testImg, CV_8U, 255.0 / slope.slope1);
 					applyColorMap(_testImg, _testImg, cv::COLORMAP_RAINBOW);
 					cv::imshow("空洞填补", _testImg);
@@ -649,4 +652,157 @@ void depthToPointCloud(
 			pointCloudPtr->at(_col, _row).z = f * scale;
 		}
 	}
+}
+
+void flyingPixel(
+	PsDeviceHandle& deviceHandle, 
+	uint32_t sessionIndex,
+	PsFrame& depthFrame,
+	uint32_t slpoe)
+{
+	cv::Mat flyingEm = cv::Mat(depthFrame.height, depthFrame.width, CV_16UC1, depthFrame.pFrameData);
+	cv::Mat showImg;
+	//cv::Mat showImg = cv::Mat(depthFrame.height, depthFrame.width, CV_16UC1, depthFrame.pFrameData);
+	flyingEm.convertTo(showImg, CV_32F);
+	//applyColorMap(showImg, showImg, cv::COLORMAP_RAINBOW);
+	cv::Mat showImg2;
+	bilateralFilter(showImg, showImg2, 15, 20, 50);
+	cv::imshow("滤波前", showImg);
+	cv::imshow("滤波后", showImg2);
+	showImg2.convertTo(showImg2, CV_16UC1);
+	for (size_t row = 1; row < flyingEm.rows - 1; ++row) {
+		for (size_t col = 1; col < flyingEm.cols - 1; ++col) {
+			flyingEm.at<ushort>(row, col) = showImg2.at<ushort>(row, col);
+		}
+	}
+	int len, pWorldIndex, winSize=1;
+	int winWidth = winSize * 2 + 1;
+	int winNum = winWidth * winWidth;
+	len = depthFrame.width * depthFrame.height;
+	PsVector3f* pWorld = new PsVector3f[len];
+	Ps2_ConvertDepthFrameToWorldVector(deviceHandle, sessionIndex, depthFrame, pWorld);
+	vector<Eigen::Vector3f> win;
+	Eigen::Vector3f normal = Eigen::Vector3f::Zero();
+	Eigen::Vector3f pVec;
+	vector<int> search({ 0,1,2,5,8,7,6,3 });
+	vector<int> search2({ 0,1,2,5,8,7,6,3 });
+	win.resize(9);
+	Eigen::MatrixXf winMatrix(winNum, 3);
+	
+	float flyingI, maxZdis,minZdis;
+	//int row_, col_;
+	for (size_t row = winSize; row < flyingEm.rows - winSize; ++row) {
+		cout <<"\rnormal row"<<row;
+		for (size_t col = winSize; col < flyingEm.cols - winSize; ++col) {
+			//cout << " col" << col;
+			if (flyingEm.at<ushort>(row, col) == 65535 || flyingEm.at<ushort>(row, col) == 0) {
+				flyingEm.at<ushort>(row, col) = 0;
+				continue;
+			}
+			pWorldIndex = row * depthFrame.width + col;
+			pVec << pWorld[pWorldIndex].x, pWorld[pWorldIndex].y, pWorld[pWorldIndex].z;
+			minZdis = 65535;
+			maxZdis = 0;
+			for (int _index = 0; _index < winNum; ++_index) {
+				pWorldIndex = (row + _index / winWidth - winSize) * depthFrame.width + col - winSize + (_index % winWidth);
+				winMatrix.row(_index) << pWorld[pWorldIndex].x, pWorld[pWorldIndex].y, pWorld[pWorldIndex].z;
+				minZdis = minZdis < pWorld[pWorldIndex].z ? minZdis : pWorld[pWorldIndex].z;
+				maxZdis = maxZdis > pWorld[pWorldIndex].z ? maxZdis : pWorld[pWorldIndex].z;
+			}
+			//cout <<"\r" << maxZdis - minZdis;
+			//if (maxZdis - minZdis < 10)continue;
+			getNormal(winMatrix, normal);
+			//for (int _index = 0; _index < 9; ++_index) {
+			//	pWorldIndex = (row + _index / 3 - 1) * depthFrame.width + col - 1 + (_index % 3);
+			//		win[_index] << pWorld[pWorldIndex].x, pWorld[pWorldIndex].y, pWorld[pWorldIndex].z;
+			//}
+			//normal.setZero();
+			//for (int _index = 0; _index < 8; _index++) {
+			//	normal += (win[search[_index]] - win[4]).cross(win[search[(_index + 2) % 8]] - win[4]).normalized();
+			//}
+			normal.normalized();
+			flyingI = abs(pVec.normalized().dot(normal));
+			if (flyingI >0.8)flyingEm.at<ushort>(row, col) = 65535;
+			//flyingEm.at<ushort>(row, col) = 65535;
+			//else flyingEm.at<ushort>(col, row) = 0;
+		}
+	}
+	return;
+	cout << endl;
+	int mindis, disTemp;
+	vector<vector<int>> neighborPixle;
+	//vector<vector<int>> neighborPixle;
+	neighborPixle.resize(4);
+	for (auto& _v : neighborPixle) {
+		_v.resize(2);
+	}
+	for (int _row = 0; _row < flyingEm.rows; ++_row) {
+		cout << "\rrow " << _row;
+		for (int _col = 0; _col < flyingEm.cols; ++_col) {
+			if (flyingEm.at<ushort>(_row, _col) != 65535) continue;
+			int _r = _row;
+			int _c = _col - 1;
+			while (_c >= 0 && _r >= 0 && (flyingEm.at<ushort>(_r, _c) == 65535)) {
+				--_c;
+			}
+			neighborPixle[0][0] = _r > 0 ? _r : 0;
+			neighborPixle[0][1] = _c > 0 ? _c : 0;
+			_r = _row - 1;
+			_c = _col;
+			while (_c >= 0 && _r >= 0 && (flyingEm.at<ushort>(_r, _c) == 65535)) {
+				--_r;
+			}
+			neighborPixle[1][0] = _r > 0 ? _r : 0;
+			neighborPixle[1][1] = _c > 0 ? _c : 0;
+			_r = _row;
+			_c = _col + 1;
+			while (_c < flyingEm.cols && _r < flyingEm.rows && (flyingEm.at<ushort>(_r, _c) == 65535)) {
+				++_c;
+			}
+			if (_c < flyingEm.cols && _r < flyingEm.rows) {
+				neighborPixle[2][0] = _r < flyingEm.rows ? _r : flyingEm.rows;
+				neighborPixle[2][1] = _c < flyingEm.rows ? _c : flyingEm.rows;
+			}
+			_r = _row + 1;
+			_c = _col;
+			while (_c < flyingEm.cols && _r < flyingEm.rows && (flyingEm.at<ushort>(_r, _c) == 65535)) {
+				++_r;
+			}
+			neighborPixle[3][0] = _r < flyingEm.rows ? _r : flyingEm.rows;
+			neighborPixle[3][1] = _c < flyingEm.rows ? _c : flyingEm.rows;
+
+			int pixel = flyingEm.at<ushort>(_row, _col);
+			mindis = 65536;
+			for (int __index = 0; __index < 4; ++__index) {
+				disTemp = abs(pixel- flyingEm.at<ushort>(neighborPixle[__index][0], neighborPixle[__index][1]));
+				if (disTemp < mindis) {
+					mindis = disTemp;
+					flyingEm.at<ushort>(_row, _col) = flyingEm.at<ushort>(neighborPixle[__index][0], neighborPixle[__index][1]);
+				}
+			}
+		}
+	}
+}
+
+void getNormal(
+	Eigen::MatrixXf matrix,
+	Eigen::Vector3f& normal)
+{
+	int pointNum = matrix.rows();
+	float mean_x = 0, mean_y = 0, mean_z = 0;
+	mean_x = matrix.col(0).mean();
+	mean_y = matrix.col(1).mean();
+	mean_z = matrix.col(2).mean();
+	for (int _row = 0; _row < pointNum; ++_row) {
+		matrix(_row, 0) -= mean_x;
+		matrix(_row, 1) -= mean_y;
+		matrix(_row, 2) -= mean_z;
+	}
+	Eigen::Matrix3f covMatrix = (matrix.transpose()* matrix) / pointNum;
+	Eigen::EigenSolver<Eigen::Matrix3f> em(covMatrix);
+	Eigen::Matrix3f D = em.pseudoEigenvalueMatrix();
+	Eigen::Matrix3f V = em.pseudoEigenvectors();
+	int row, col;
+	D.maxCoeff(&row, &col);
+	normal = V.col(row);
 }

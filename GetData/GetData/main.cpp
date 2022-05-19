@@ -1,5 +1,8 @@
 #include "camera.h"
 #include <fstream>
+#include <iostream>
+#include <iomanip>
+#include <sstream>
 #include <io.h>
 #include <pcl/visualization/pcl_visualizer.h>
 namespace cloud {
@@ -74,13 +77,31 @@ int mode = 1;
 
 
 int main(int argc, char* argv[]) {
-	if (mode == 0) {
+	cout << "Input mode -1(view),0(camera),1(program),2(convert csv)" << endl;
+	cin >> mode;
+	if (mode == -1) {
+		string fp("");
+		cout << "Please input path(0 for default)" << endl;
+		cout << "\\ for split" << endl;
+		cin >> fp;
+		if (fp == "0") fp = "D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\ETH\\pcd";
+		vector<string> files;
+		cloud::PointCloudPtrVec pointCloudPtrVec;
+		getFiles(fp, files, "pcd", true);
+		for (size_t _index = 0; _index < files.size();++_index) {
+			cloud::PointCloudPtr _temp(new cloud::PointCloud);
+			pcl::io::loadPCDFile(files[_index], *_temp);
+			pointCloudPtrVec.push_back(_temp);
+		}
+		visualizePointCloud(pointCloudPtrVec);
+	}
+	else if (mode == 0) {
 		//相机打开
 		string fp("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\自建数据\\原始PCD");
-		//cout << "Please input save path(0 for default)" << endl;
-		//cout << "\\ for split" << endl;
-		//cin >> fp;
-		//if (fp == "0") fp = ".\\PCD";
+		cout << "Please input save path(0 for default)" << endl;
+		cout << "\\ for split" << endl;
+		cin >> fp;
+		if (fp == "0") fp = "D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\DCAM710数据\\飞行像素";
 
 		_finddata_t fileInfo;
 		intptr_t handle;
@@ -105,9 +126,9 @@ int main(int argc, char* argv[]) {
 		//关闭相机
 		closeCamera(deviceHandle, sessionIndex);
 	}
-	else {
-		string pcdPath("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\bunny\\程序生成640-480\\原始PCD");
-		string pngPath("D:\\剑走偏锋\\毕设\\硕士\\Blender\\bunny_seq_640_480");
+	else if(mode==1){
+		string pcdPath("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\程序生成men_640_480\\原始PCD");
+		string pngPath("D:\\剑走偏锋\\毕设\\硕士\\Blender\\men_640_480");
 		vector<string> files;
 		getFiles(pngPath, files, "png", true);
 		cv::Mat image;
@@ -133,6 +154,49 @@ int main(int argc, char* argv[]) {
 		//cv::waitKey();
 		
 		cout << "close";
+	}
+	else if(mode==2){
+		string fp("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\ETH\\local_frame_csv");
+		string saveFp("D:\\剑走偏锋\\毕设\\硕士\\TOF\\数据\\ETH\\pcd");
+		//cout << "输入源文件夹路径" << endl;
+		//cin >> fp;
+		//cout << "输入保存文件夹路径" << endl;
+		//cin >> saveFp;
+		vector<string> files;
+		getFiles(fp, files, "csv", true);
+		ifstream inFile;
+		string line, filed;
+		cloud::PointCloudPtrVec pointCloudPtrVec;
+		cloud::PointCloudPtr _pointCloudPtr(new cloud::PointCloud);
+		for (size_t _index = 0; _index < files.size(); ++_index) {
+			cout << "converting " << files[_index] <<"--" << _index + 1 << "/" << files.size() << endl;
+			inFile.open(files[_index], ios::in);
+			if (!inFile)
+			{
+				cout << "打开文件失败！" << endl;
+				continue;
+			}
+			getline(inFile, line);
+			while (getline(inFile, line))
+			{
+				pcl::PointXYZ _point;
+				istringstream istream(line);
+				getline(istream, filed, ',');
+				getline(istream, filed, ',');
+				_point.x = atof(filed.c_str());
+				getline(istream, filed, ',');
+				_point.y = atof(filed.c_str());
+				getline(istream, filed, ',');
+				_point.z = atof(filed.c_str());
+				_pointCloudPtr->push_back(_point);
+			}
+			inFile.clear();
+			inFile.close();
+			_pointCloudPtr->width = _pointCloudPtr->size();
+			_pointCloudPtr->height = 1;
+			pcl::io::savePCDFileBinary(saveFp+"\\"+to_string(_index).append(".pcd"), *_pointCloudPtr);
+			_pointCloudPtr->clear();
+		}
 	}
 
 	return 0;
