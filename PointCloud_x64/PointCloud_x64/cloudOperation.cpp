@@ -2672,32 +2672,250 @@ void Keypoints2(
 	}
 }
 
+void Keypoints3(
+	cloud::PointCloudNormalPtr& inCloud,
+	pcl::Indices& outIndices,
+	pcl::PointCloud<CustomPointT2>& cloudFeature,
+	float dis,
+	float dis2,
+	float alphaTh,
+	float alphaTh2,
+	float betaTh,
+	float segDis,
+	int minSize,
+	int edgeN,
+	bool conver)
+{
+	cloud::PointCloudNormalPtr outCloud(new cloud::PointCloudNormal);
+	pcl::copyPointCloud(*inCloud, *outCloud);
+	outIndices.clear();
+	outIndices.resize(outCloud->size());
+	//pcl::PointCloud<pcl::Histogram<4>> cloudFeature;
+	cloudFeature.resize(outCloud->size());
+	int outIndicesIndex = 0;
+	//构建kd-tree
+	MyPointRepresentationXYZ<cloud::PointNormalT>::Ptr rep(new MyPointRepresentationXYZ<cloud::PointNormalT>);
+	pcl::search::KdTree<cloud::PointNormalT>::Ptr kdtreePtr(new pcl::search::KdTree<cloud::PointNormalT>);
+	kdtreePtr->setPointRepresentation(rep);
+	kdtreePtr->setInputCloud(outCloud);
+	vector<int> indices;
+	vector<float> distances;
+
+	Eigen::Vector3f pVec;
+	float dot1, dot2;
+	float theta, beta;
+	float alpha1, alpha2, alpha3;
+	int count0, count1, count_1, count;
+	for (size_t _index = 0; _index < outCloud->size(); ++_index) {
+		kdtreePtr->radiusSearch((*outCloud).points[_index], dis, indices, distances);
+		cloud::PointNormalT& _p = (*outCloud)[_index];
+		count0 = count1 = count_1 = 0;
+		for (size_t __index = 0; __index < indices.size(); ++__index) {
+			if (distances[__index] <= dis2)continue; //是该点本身
+			pVec = ((*outCloud)[indices[__index]].getVector3fMap() - _p.getVector3fMap()).normalized();
+			dot1 = pVec.dot(_p.getNormalVector3fMap());
+			dot2 = (-1 * pVec).dot((*outCloud)[indices[__index]].getNormalVector3fMap());
+			theta = acosf(dot1);
+			//theta = (acosf(dot1) + acosf(dot2)) * 0.5;
+			beta = (dot1 + dot2)/2.0;
+			//beta = (theta / PI - 0.5) * 2.0;
+			if (beta > betaTh)++count_1; //凹点对
+			else if (beta < -1*betaTh)++count1; //凸点对
+			else ++count0; //平面点对
+		}
+		count = count1 + count0 + count_1;
+		alpha1 = (float)count1 / (float)count; //凸点对百分比
+		alpha2 = (float)count0 / (float)count; //平面点对百分比
+		alpha3 = (float)count_1 / (float)count; //凹点对百分比
+		if (alpha1 > alphaTh)(*outCloud)[_index].data_n[3] = 1;	//凸峰面，红色
+		else if(alpha2 > alphaTh)(*outCloud)[_index].data_n[3] = 2;	//平面，绿色
+		else if(alpha3 > alphaTh)(*outCloud)[_index].data_n[3] = 3;	//凹谷面，蓝色
+		else if (alpha1 > alphaTh2 && alpha2 > alphaTh2 && alpha3 > alphaTh2) {
+			(*outCloud)[_index].data_n[3] = 0;
+		}
+		else if (alpha1 > alpha2) {
+			if (alpha3 > alpha2) {
+				(*outCloud)[_index].data_n[3] = 4;	//鞍面，黄色
+			}
+			else {
+				(*outCloud)[_index].data_n[3] = 5;	//凸脊面，紫色
+			}
+		}
+		else {
+			if (alpha1 > alpha3) {
+				(*outCloud)[_index].data_n[3] = 6;	//凹脊面，青色
+			}
+			else {
+				(*outCloud)[_index].data_n[3] = 5;	//凸脊面，紫色
+			}
+		}
+	}
+	class MyPointRepresentation :public pcl::PointRepresentation<cloud::PointNormalT> {
+		using pcl::PointRepresentation<cloud::PointNormalT>::nr_dimensions_;
+	public:
+		using Ptr = shared_ptr<MyPointRepresentation>;
+		MyPointRepresentation() {
+			nr_dimensions_ = 4;
+		}
+		virtual void copyToFloatArray(const cloud::PointNormalT& p, float* out) const
+		{
+			out[0] = p.x;
+			out[1] = p.y;
+			out[2] = p.z;
+			out[3] = p.data_n[3];
+		}
+	};
+	MyPointRepresentation::Ptr pointRepresentationPtr(new MyPointRepresentation);
+	pcl::search::KdTree<cloud::PointNormalT>::Ptr tree(new pcl::search::KdTree<cloud::PointNormalT>);
+	tree->setPointRepresentation(pointRepresentationPtr);
+	tree->setInputCloud(outCloud);
+	std::vector<pcl::PointIndices> cluster_indices;
+	pcl::EuclideanClusterExtraction<cloud::PointNormalT> ec;
+	ec.setClusterTolerance(segDis); // 2cm
+	ec.setMinClusterSize(0);
+	ec.setMaxClusterSize(25000);
+	ec.setSearchMethod(tree);
+	ec.setInputCloud(outCloud);
+	ec.extract(cluster_indices);
+	for (const auto& _indices : cluster_indices) {
+		if (_indices.indices.size() > minSize) continue;
+		for (const auto& _indice : _indices.indices) {
+			(*outCloud)[_indice].data_n[3] = 0;
+		}
+	}
+	map<int, int, less<int>> numberCountMap;
+	map<int, int, less<int>>::iterator mapIter;
+	int minNum, maxNumID;
+	if (conver) {
+		for (int _index = 0; _index < outCloud->size(); ++_index) {
+			if ((*outCloud)[_index].data_n[3] != 0)continue;
+			kdtreePtr->nearestKSearch((*outCloud).points[_index], 8, indices, distances);
+			numberCountMap.clear();
+			for (const auto& _indice : indices) {
+				mapIter = numberCountMap.find(_indice);
+				if ((*outCloud)[_indice].data_n[3] == 0)continue;
+				if (mapIter == numberCountMap.end()) {
+					numberCountMap.insert(pair<int, int>((*outCloud)[_indice].data_n[3], 1));
+				}
+				else {
+					++(*mapIter).second;
+				}
+			}
+			minNum = 0;
+			maxNumID = 0;
+			for (const auto& _e : numberCountMap) {
+				if (_e.second > minNum) {
+					minNum = _e.second;
+					maxNumID = _e.first;
+				}
+			}
+			(*outCloud)[_index].data_n[3] = maxNumID;
+		}
+	}
+	tree->setInputCloud(outCloud);
+	ec.setSearchMethod(tree);
+	ec.setInputCloud(outCloud);
+	ec.extract(cluster_indices);
+	float percent;
+	for (const auto& _indices : cluster_indices) {
+		percent = _indices.indices.size() / (float)outCloud->size();
+		for (const auto& _indice : _indices.indices) {
+			(*outCloud)[_indice].data_c[1] = percent;
+		}
+	}
+	keyViewer(outCloud);
+	Eigen::Vector3f x_normal, y_normal, z_normal;
+	float label, tempF;
+	float xTemp, yTemp;
+	//int count;
+	int nearestIndex;
+	float minDis = dis;
+	map<float, int, less<float>> dict;
+	map<int, float, less<float>> dict2;
+	for (size_t _index = 0; _index < outCloud->size(); ++_index) {
+		label = (*outCloud)[_index].data_n[3];
+		if (label == 0)continue;
+		kdtreePtr->nearestKSearch((*outCloud).points[_index], 8, indices, distances);
+		minDis = dis;
+		nearestIndex = 1;
+		for (int __index = 0; __index < distances.size(); ++__index) {
+			if (distances[__index] == 0)continue; //是该点本身
+			if (distances[__index] < minDis) {
+				nearestIndex = __index;
+				minDis = distances[__index];
+			}
+		}
+
+		z_normal = (*outCloud)[_index].getNormalVector3fMap();
+		pVec = ((*outCloud).points[nearestIndex].getVector3fMap() - (*outCloud)[_index].getVector3fMap()).normalized();
+		x_normal = z_normal.cross(pVec);
+		y_normal = z_normal.cross(x_normal);
+
+		dict.clear();
+		for (size_t __index = 0; __index < indices.size(); ++__index) {
+			if (distances[__index] == 0)continue; //是该点本身
+			pVec = (*outCloud)[indices[__index]].getVector3fMap() - (*outCloud)[_index].getVector3fMap();
+			xTemp = pVec.dot(x_normal);
+			yTemp = pVec.dot(y_normal);
+			theta = atan2f(yTemp, xTemp);
+			dict.insert(pair<float, int>(theta, (*outCloud)[indices[__index]].data_n[3]));
+			dict2.insert(pair<int, float>((*outCloud)[indices[__index]].data_n[3], (*outCloud)[indices[__index]].data_c[1]));
+		}
+		count = 0;
+		for (const auto& e : dict) {
+			if (e.second == label || e.second == 0)count=0;
+			else ++count;
+			if (count > edgeN && e.second < label) {
+				outIndices[outIndicesIndex] = _index;
+				cloudFeature[outIndicesIndex].histogram[0] = e.second;
+				cloudFeature[outIndicesIndex].histogram[1] = label;
+				cloudFeature[outIndicesIndex].histogram[2] = dict2[e.second];
+				cloudFeature[outIndicesIndex].histogram[3] = (*outCloud)[_index].data_c[1];
+				++outIndicesIndex;
+				break;
+			}
+		}
+	}
+	cloudFeature.resize(outIndicesIndex);
+	outIndices.resize(outIndicesIndex);
+}
+
 int keyViewer(
 	cloud::PointCloudNormalPtr pointCloudNormalPtr)
 {
 	pcl::PointCloud<pcl::PointXYZRGB> pointRGB;
 	pointRGB.resize(pointCloudNormalPtr->size());
+	vector<cloud::Color> colorVec;
+	colorVec = COLOR_VEC;
+	colorVec.insert(colorVec.begin(),BLACK_COLOR);
+	int colorIndex;
 	for (int _index = 0; _index < pointCloudNormalPtr->size(); ++_index) {
 		pcl::copyPoint(pointCloudNormalPtr->at(_index), pointRGB[_index]);
-		if ((*pointCloudNormalPtr)[_index].data_n[3] == 0) {
-			pointRGB[_index].r = 255;
-			pointRGB[_index].g = 255;
-			pointRGB[_index].b = 255;
-		}
-		else if ((*pointCloudNormalPtr)[_index].data_n[3] == -1) {
-			pointRGB[_index].r = 255;
-			pointRGB[_index].g = 0;
-			pointRGB[_index].b = 0;
-		}
-		else {
-			pointRGB[_index].r = 0;
-			pointRGB[_index].g = 255;
-			pointRGB[_index].b = 0;
-		}
+		//colorIndex = (int)(*pointCloudNormalPtr)[_index].data_n[3] - 1;
+		colorIndex = (int)(*pointCloudNormalPtr)[_index].data_n[3];
+		pointRGB[_index].r = colorVec[colorIndex % colorVec.size()].r;
+		pointRGB[_index].g = colorVec[colorIndex % colorVec.size()].g;
+		pointRGB[_index].b = colorVec[colorIndex % colorVec.size()].b;
+		//if ((*pointCloudNormalPtr)[_index].data_n[3] == 1) {
+		//	pointRGB[_index].r = 255;
+		//	pointRGB[_index].g = 255;
+		//	pointRGB[_index].b = 255;
+		//}
+		//else if ((*pointCloudNormalPtr)[_index].data_n[3] == 2) {
+		//	pointRGB[_index].r = 255;
+		//	pointRGB[_index].g = 0;
+		//	pointRGB[_index].b = 0;
+		//}
+		//else {
+		//	pointRGB[_index].r = 0;
+		//	pointRGB[_index].g = 255;
+		//	pointRGB[_index].b = 0;
+		//}
 	}
 	pcl::visualization::PCLVisualizer viewer("3D Viewer");
 	viewer.addPointCloud(pointRGB.makeShared());
-	viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3);
+	viewer.setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1);
+	viewer.setBackgroundColor(255, 255, 255);
 	while (!viewer.wasStopped())
 	{
 		viewer.spinOnce(100);

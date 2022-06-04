@@ -283,6 +283,7 @@ getRealTimePointClouds(
 	int len = 0;
 	int waitKeyTime = 10;
 	pcl::visualization::CloudViewer viewer("Cloud Viewer");
+	//pcl::visualization::CloudViewer viewer_("Cloud Viewer2");
 
 	showDepthImage = showDepthImage && (slope.range_num > 0);
 
@@ -408,6 +409,18 @@ getRealTimePointClouds(
 				//开始保存
 				if (saveStart && (Index % interval == 1 || !auto_update)) {
 					cout << "save===========================" << endl;
+					len = depthFrame.width * depthFrame.height;
+					PsVector3f* pWorld_ = new PsVector3f[len];
+					Ps2_ConvertDepthFrameToWorldVector(deviceHandle, sessionIndex, depthFrame, pWorld_);
+					pcl::PointCloud<pcl::PointXYZ>::Ptr pointCloud_(new pcl::PointCloud<pcl::PointXYZ>);
+					pointCloud_->width = depthFrame.width;
+					pointCloud_->height = depthFrame.height;
+					pointCloud_->resize(len);
+					for (int i = 0; i < len; i++) {
+						pointCloud_->points[i].x = pWorld_[i].x / 1000;
+						pointCloud_->points[i].y = pWorld_[i].y / 1000;
+						pointCloud_->points[i].z = pWorld_[i].z / 1000;
+					}
 					flyingPixel(deviceHandle, sessionIndex, depthFrame, slope.slope1);
 					cv::Mat _testImg = cv::Mat(depthFrame.height, depthFrame.width, CV_16UC1, depthFrame.pFrameData);
 					//vector<int> weight;
@@ -491,7 +504,10 @@ getRealTimePointClouds(
 						pointCloud->points[i].z = pWorld[i].z / 1000;
 					}
 					if (!auto_update) {
+						viewer.showCloud(pointCloud_);
+						cv::waitKey();
 						viewer.showCloud(pointCloud);
+						
 						if (cv::waitKey() == 's') pointCloudVec.push_back(pointCloud);
 						cout << "\rcatch " << Index << " frame";
 						saveStart = !saveStart;
@@ -661,14 +677,15 @@ void flyingPixel(
 	uint32_t slpoe)
 {
 	cv::Mat flyingEm = cv::Mat(depthFrame.height, depthFrame.width, CV_16UC1, depthFrame.pFrameData);
-	cv::Mat showImg;
+	cv::Mat showImg, copyImg;
+	copyImg = flyingEm.clone();
 	//cv::Mat showImg = cv::Mat(depthFrame.height, depthFrame.width, CV_16UC1, depthFrame.pFrameData);
 	flyingEm.convertTo(showImg, CV_32F);
 	//applyColorMap(showImg, showImg, cv::COLORMAP_RAINBOW);
 	cv::Mat showImg2;
 	bilateralFilter(showImg, showImg2, 15, 20, 50);
-	cv::imshow("滤波前", showImg);
-	cv::imshow("滤波后", showImg2);
+	//cv::imshow("滤波前", showImg);
+	//cv::imshow("滤波后", showImg2);
 	showImg2.convertTo(showImg2, CV_16UC1);
 	for (size_t row = 1; row < flyingEm.rows - 1; ++row) {
 		for (size_t col = 1; col < flyingEm.cols - 1; ++col) {
@@ -683,6 +700,11 @@ void flyingPixel(
 	Ps2_ConvertDepthFrameToWorldVector(deviceHandle, sessionIndex, depthFrame, pWorld);
 	vector<Eigen::Vector3f> win;
 	Eigen::Vector3f normal = Eigen::Vector3f::Zero();
+	vector<vector<Eigen::Vector3f>> normalVec;
+	normalVec.resize(flyingEm.rows);
+	for (auto& _v : normalVec) {
+		_v.resize(flyingEm.cols);
+	}
 	Eigen::Vector3f pVec;
 	vector<int> search({ 0,1,2,5,8,7,6,3 });
 	vector<int> search2({ 0,1,2,5,8,7,6,3 });
@@ -690,9 +712,14 @@ void flyingPixel(
 	Eigen::MatrixXf winMatrix(winNum, 3);
 	
 	float flyingI, maxZdis,minZdis;
+	typedef struct {
+		int row;
+		int col;
+	}flyIndex;
+	vector<flyIndex> flyIndexVec;
 	//int row_, col_;
 	for (size_t row = winSize; row < flyingEm.rows - winSize; ++row) {
-		cout <<"\rnormal row"<<row;
+		cout << "\rnormal row" << row << endl;
 		for (size_t col = winSize; col < flyingEm.cols - winSize; ++col) {
 			//cout << " col" << col;
 			if (flyingEm.at<ushort>(row, col) == 65535 || flyingEm.at<ushort>(row, col) == 0) {
@@ -703,31 +730,40 @@ void flyingPixel(
 			pVec << pWorld[pWorldIndex].x, pWorld[pWorldIndex].y, pWorld[pWorldIndex].z;
 			minZdis = 65535;
 			maxZdis = 0;
-			for (int _index = 0; _index < winNum; ++_index) {
-				pWorldIndex = (row + _index / winWidth - winSize) * depthFrame.width + col - winSize + (_index % winWidth);
-				winMatrix.row(_index) << pWorld[pWorldIndex].x, pWorld[pWorldIndex].y, pWorld[pWorldIndex].z;
-				minZdis = minZdis < pWorld[pWorldIndex].z ? minZdis : pWorld[pWorldIndex].z;
-				maxZdis = maxZdis > pWorld[pWorldIndex].z ? maxZdis : pWorld[pWorldIndex].z;
+			//for (int _index = 0; _index < winNum; ++_index) {
+			//	pWorldIndex = (row + _index / winWidth - winSize) * depthFrame.width + col - winSize + (_index % winWidth);
+			//	winMatrix.row(_index) << pWorld[pWorldIndex].x, pWorld[pWorldIndex].y, pWorld[pWorldIndex].z;
+			//	minZdis = minZdis < pWorld[pWorldIndex].z ? minZdis : pWorld[pWorldIndex].z;
+			//	maxZdis = maxZdis > pWorld[pWorldIndex].z ? maxZdis : pWorld[pWorldIndex].z;
+			//}
+			////cout <<"\r" << maxZdis - minZdis;
+			//if (maxZdis - minZdis < 20)continue;
+			//getNormal(winMatrix, normal);
+			for (int _index = 0; _index < 9; ++_index) {
+				pWorldIndex = (row + _index / 3 - 1) * depthFrame.width + col - 1 + (_index % 3);
+					win[_index] << pWorld[pWorldIndex].x, pWorld[pWorldIndex].y, pWorld[pWorldIndex].z;
 			}
-			//cout <<"\r" << maxZdis - minZdis;
-			//if (maxZdis - minZdis < 10)continue;
-			getNormal(winMatrix, normal);
-			//for (int _index = 0; _index < 9; ++_index) {
-			//	pWorldIndex = (row + _index / 3 - 1) * depthFrame.width + col - 1 + (_index % 3);
-			//		win[_index] << pWorld[pWorldIndex].x, pWorld[pWorldIndex].y, pWorld[pWorldIndex].z;
-			//}
-			//normal.setZero();
-			//for (int _index = 0; _index < 8; _index++) {
-			//	normal += (win[search[_index]] - win[4]).cross(win[search[(_index + 2) % 8]] - win[4]).normalized();
-			//}
+			normal.setZero();
+			for (int _index = 0; _index < 8; _index++) {
+				normal += (win[search[_index]] - win[4]).cross(win[search[(_index + 2) % 8]] - win[4]).normalized();
+			}
 			normal.normalized();
+			normalVec[row][col] = normal;
 			flyingI = abs(pVec.normalized().dot(normal));
-			if (flyingI >0.8)flyingEm.at<ushort>(row, col) = 65535;
+			if (flyingI < 0.8) {
+				flyIndex flyIndex_;
+				flyIndex_.row = row;
+				flyIndex_.col = col;
+				flyIndexVec.push_back(flyIndex_);
+				copyImg.at<ushort>(row, col) = 65535;
+				//flyingEm.at<ushort>(row, col) = 65535;
+			}
 			//flyingEm.at<ushort>(row, col) = 65535;
 			//else flyingEm.at<ushort>(col, row) = 0;
 		}
 	}
-	return;
+	cv::imshow("飞行像素", copyImg);
+	//return;
 	cout << endl;
 	int mindis, disTemp;
 	vector<vector<int>> neighborPixle;
@@ -736,51 +772,62 @@ void flyingPixel(
 	for (auto& _v : neighborPixle) {
 		_v.resize(2);
 	}
-	for (int _row = 0; _row < flyingEm.rows; ++_row) {
-		cout << "\rrow " << _row;
-		for (int _col = 0; _col < flyingEm.cols; ++_col) {
-			if (flyingEm.at<ushort>(_row, _col) != 65535) continue;
-			int _r = _row;
-			int _c = _col - 1;
-			while (_c >= 0 && _r >= 0 && (flyingEm.at<ushort>(_r, _c) == 65535)) {
-				--_c;
-			}
-			neighborPixle[0][0] = _r > 0 ? _r : 0;
-			neighborPixle[0][1] = _c > 0 ? _c : 0;
-			_r = _row - 1;
-			_c = _col;
-			while (_c >= 0 && _r >= 0 && (flyingEm.at<ushort>(_r, _c) == 65535)) {
-				--_r;
-			}
-			neighborPixle[1][0] = _r > 0 ? _r : 0;
-			neighborPixle[1][1] = _c > 0 ? _c : 0;
-			_r = _row;
-			_c = _col + 1;
-			while (_c < flyingEm.cols && _r < flyingEm.rows && (flyingEm.at<ushort>(_r, _c) == 65535)) {
-				++_c;
-			}
-			if (_c < flyingEm.cols && _r < flyingEm.rows) {
-				neighborPixle[2][0] = _r < flyingEm.rows ? _r : flyingEm.rows;
-				neighborPixle[2][1] = _c < flyingEm.rows ? _c : flyingEm.rows;
-			}
-			_r = _row + 1;
-			_c = _col;
-			while (_c < flyingEm.cols && _r < flyingEm.rows && (flyingEm.at<ushort>(_r, _c) == 65535)) {
-				++_r;
-			}
-			neighborPixle[3][0] = _r < flyingEm.rows ? _r : flyingEm.rows;
-			neighborPixle[3][1] = _c < flyingEm.rows ? _c : flyingEm.rows;
+	for (auto _index : flyIndexVec) {
+		int _row = _index.row;
+		int _col = _index.col;
+		int _r = _row;
+		int _c = _col - 1;
+		while (_c >= 0 && _r >= 0 && (copyImg.at<ushort>(_r, _c) == 65535)) {
+			--_c;
+		}
+		neighborPixle[0][0] = _r > 0 ? _r : 0;
+		neighborPixle[0][1] = _c > 0 ? _c : 0;
+		_r = _row - 1;
+		_c = _col;
+		while (_c >= 0 && _r >= 0 && (copyImg.at<ushort>(_r, _c) == 65535)) {
+			--_r;
+		}
+		neighborPixle[1][0] = _r > 0 ? _r : 0;
+		neighborPixle[1][1] = _c > 0 ? _c : 0;
+		_r = _row;
+		_c = _col + 1;
+		while (_c < flyingEm.cols && _r < flyingEm.rows && (copyImg.at<ushort>(_r, _c) == 65535)) {
+			++_c;
+		}
+		if (_c < flyingEm.cols && _r < flyingEm.rows) {
+			neighborPixle[2][0] = _r < flyingEm.rows-1 ? _r : flyingEm.rows-1;
+			neighborPixle[2][1] = _c < flyingEm.cols-1 ? _c : flyingEm.cols -1;
+		}
+		_r = _row + 1;
+		_c = _col;
+		while (_c < flyingEm.cols && _r < flyingEm.rows && (copyImg.at<ushort>(_r, _c) == 65535)) {
+			++_r;
+		}
+		neighborPixle[3][0] = _r < flyingEm.rows ? _r : flyingEm.rows;
+		neighborPixle[3][1] = _c < flyingEm.cols-1 ? _c : flyingEm.cols-1;
 
-			int pixel = flyingEm.at<ushort>(_row, _col);
-			mindis = 65536;
-			for (int __index = 0; __index < 4; ++__index) {
-				disTemp = abs(pixel- flyingEm.at<ushort>(neighborPixle[__index][0], neighborPixle[__index][1]));
-				if (disTemp < mindis) {
-					mindis = disTemp;
-					flyingEm.at<ushort>(_row, _col) = flyingEm.at<ushort>(neighborPixle[__index][0], neighborPixle[__index][1]);
-				}
+		int pixel = flyingEm.at<ushort>(_row, _col);
+		int nearRow, nearCol;
+		nearRow = neighborPixle[0][0];
+		nearCol = neighborPixle[0][1];
+		//mindis = flyingEm.at<ushort>(neighborPixle[0][0], neighborPixle[0][1]);
+		mindis = pow(neighborPixle[0][0] - _row, 2.0) + pow(neighborPixle[0][1] - _col, 2.0);
+		for (int __index = 0; __index < 4; ++__index) {
+			//disTemp = abs(pixel - flyingEm.at<ushort>(neighborPixle[__index][0], neighborPixle[__index][1]));
+			disTemp = pow(neighborPixle[__index][0] - _row, 2.0) + pow(neighborPixle[__index][1] - _col, 2.0);
+			if (disTemp < mindis) {
+				mindis = disTemp;
+				nearRow = neighborPixle[__index][0];
+				nearCol = neighborPixle[__index][1];
 			}
 		}
+		int nearWorldIndex = nearRow * depthFrame.width + nearCol;
+		int flyWorldIndex = _row * depthFrame.width + _col;
+		Eigen::Vector3f _normal = normalVec[nearRow][nearCol];
+		float k = (_normal[0] * pWorld[nearWorldIndex].x + _normal[1] * pWorld[nearWorldIndex].y + _normal[2] * pWorld[nearWorldIndex].z) /
+			(_normal[0] * pWorld[flyWorldIndex].x + _normal[1] * pWorld[flyWorldIndex].y + _normal[2] * pWorld[flyWorldIndex].z);
+		//flyingEm.at<ushort>(_row, _col) = k * pWorld[flyWorldIndex].z;
+		flyingEm.at<ushort>(_row, _col) = flyingEm.at<ushort>(nearRow, nearCol);
 	}
 }
 

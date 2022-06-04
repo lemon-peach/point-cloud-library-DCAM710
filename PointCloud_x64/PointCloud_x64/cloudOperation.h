@@ -25,6 +25,27 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(CustomPointT,           // here we assume a XY
 	(float[10], data_additional, data_additional)
 )
 
+//struct EIGEN_ALIGN16 CustomPointT2
+//{
+//	float histogram[4] = { 0.f };
+//	inline CustomPointT2(float _x, float _y, float _z, float _w) {
+//		histogram[0] = _x;
+//		histogram[1] = _y;
+//		histogram[2] = _z;
+//		histogram[3] = _w;
+//	}
+//	inline CustomPointT2() :CustomPointT2(0.0f, 0.0f, 0.0f, 0.0f) {};
+//	inline CustomPointT2(const CustomPointT2& _p) :CustomPointT2(_p.histogram[0], _p.histogram[1], _p.histogram[2], _p.histogram[3]) {};
+//	friend std::ostream& operator <<(std::ostream os, CustomPointT2& p) {
+//		return os;
+//	}
+//	PCL_MAKE_ALIGNED_OPERATOR_NEW     // make sure our new allocators are aligned
+//};                   // enforce SSE padding for correct memory alignment
+//
+//POINT_CLOUD_REGISTER_POINT_STRUCT(CustomPointT2,           // here we assume a XYZ + "test" (as fields)
+//	(float[4], histogram, histogram)
+//)
+
 #include <ctime>
 #include <cmath>
 #include <iostream>
@@ -55,8 +76,10 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(CustomPointT,           // here we assume a XY
 #include <pcl/registration/ndt.h>
 #include <pcl/registration/impl/icp.hpp>
 #include <pcl/features/normal_3d.h>
+#include <pcl/features/fpfh_omp.h>
 #include <pcl/registration/icp_nl.h>
 #include <pcl/registration/impl/icp_nl.hpp>
+#include <pcl/registration/sample_consensus_prerejective.h>
 #include <pcl/surface/gp3.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/statistical_outlier_removal.h>
@@ -81,6 +104,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(CustomPointT,           // here we assume a XY
 #include "function.h"
 
 using namespace std;
+using CustomPointT2 = pcl::FPFHSignature33;
 namespace cloud{
 	using PointT = pcl::PointXYZ;
 	using PointCloud = pcl::PointCloud<PointT>;
@@ -134,6 +158,7 @@ namespace cloud{
 #define PURPLE_COLOR cloud::Color({ 255.0, 0.0, 255.0 })
 #define CYAN_COLOR cloud::Color({ 0.0, 255.0, 255.0 })
 #define WHITE_COLOR cloud::Color({ 255.0, 255.0, 255.0 })
+#define BLACK_COLOR cloud::Color({ 0.0, 0.0, 0.0 })
 #define COLOR1 cloud::Color({ 200,50,0 })
 #define COLOR2 cloud::Color({ 150,100,0 })
 #define COLOR3 cloud::Color({ 100,150,0 })
@@ -198,6 +223,216 @@ public:
 		out[6] = p.curvature;
 	}
 };
+template <typename PointSource, typename PointTarget, typename FeatureT>
+class SampleConsensusPrerejective2 : public pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT> {
+public:
+	using Matrix4 = typename pcl::Registration<PointSource, PointTarget>::Matrix4;
+
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::reg_name_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::getClassName;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::input_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::target_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::tree_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::max_iterations_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::corr_dist_threshold_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::transformation_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::final_transformation_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::transformation_estimation_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::getFitnessScore;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::converged_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::input_features_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::target_features_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::inlier_fraction_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::correspondence_rejector_poly_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::k_correspondences_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::nr_samples_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::inliers_;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::getFitness;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::selectSamples;
+	using pcl::SampleConsensusPrerejective<PointSource, PointTarget, FeatureT>::findSimilarFeatures;
+
+	using PointCloudSource = typename pcl::Registration<PointSource, PointTarget>::PointCloudSource;
+	using PointCloudSourcePtr = typename PointCloudSource::Ptr;
+	using PointCloudSourceConstPtr = typename PointCloudSource::ConstPtr;
+
+	using PointCloudTarget = typename pcl::Registration<PointSource, PointTarget>::PointCloudTarget;
+
+	using PointIndicesPtr = pcl::PointIndices::Ptr;
+	using PointIndicesConstPtr = pcl::PointIndices::ConstPtr;
+
+	using FeatureCloud = pcl::PointCloud<FeatureT>;
+	using FeatureCloudPtr = typename FeatureCloud::Ptr;
+	using FeatureCloudConstPtr = typename FeatureCloud::ConstPtr;
+
+	using Ptr = shared_ptr<SampleConsensusPrerejective2<PointSource, PointTarget, FeatureT> >;
+	using ConstPtr = shared_ptr<const SampleConsensusPrerejective2<PointSource, PointTarget, FeatureT> >;
+
+	using FeatureKdTreePtr = typename pcl::KdTreeFLANN<FeatureT>::Ptr;
+
+	using CorrespondenceRejectorPoly = pcl::registration::CorrespondenceRejectorPoly<PointSource, PointTarget>;
+	using CorrespondenceRejectorPolyPtr = typename CorrespondenceRejectorPoly::Ptr;
+	using CorrespondenceRejectorPolyConstPtr = typename CorrespondenceRejectorPoly::ConstPtr;
+	vector<int> sourceCoorIndices;
+	vector<int> targetCoorIndices;
+	void computeTransformation(PointCloudSource& output, const Eigen::Matrix4f& guess)override;
+};
+template <typename PointSource, typename PointTarget, typename FeatureT> void
+SampleConsensusPrerejective2<PointSource, PointTarget, FeatureT>::computeTransformation(PointCloudSource& output, const Eigen::Matrix4f& guess)
+{
+	// Some sanity checks first
+	if (!input_features_)
+	{
+		PCL_ERROR("[pcl::%s::computeTransformation] ", getClassName().c_str());
+		PCL_ERROR("No source features were given! Call setSourceFeatures before aligning.\n");
+		return;
+	}
+	if (!target_features_)
+	{
+		PCL_ERROR("[pcl::%s::computeTransformation] ", getClassName().c_str());
+		PCL_ERROR("No target features were given! Call setTargetFeatures before aligning.\n");
+		return;
+	}
+
+	if (input_->size() != input_features_->size())
+	{
+		PCL_ERROR("[pcl::%s::computeTransformation] ", getClassName().c_str());
+		PCL_ERROR("The source points and source feature points need to be in a one-to-one relationship! Current input cloud sizes: %ld vs %ld.\n",
+			input_->size(), input_features_->size());
+		return;
+	}
+
+	if (target_->size() != target_features_->size())
+	{
+		PCL_ERROR("[pcl::%s::computeTransformation] ", getClassName().c_str());
+		PCL_ERROR("The target points and target feature points need to be in a one-to-one relationship! Current input cloud sizes: %ld vs %ld.\n",
+			target_->size(), target_features_->size());
+		return;
+	}
+
+	if (inlier_fraction_ < 0.0f || inlier_fraction_ > 1.0f)
+	{
+		PCL_ERROR("[pcl::%s::computeTransformation] ", getClassName().c_str());
+		PCL_ERROR("Illegal inlier fraction %f, must be in [0,1]!\n",
+			inlier_fraction_);
+		return;
+	}
+
+	const float similarity_threshold = correspondence_rejector_poly_->getSimilarityThreshold();
+	if (similarity_threshold < 0.0f || similarity_threshold >= 1.0f)
+	{
+		PCL_ERROR("[pcl::%s::computeTransformation] ", getClassName().c_str());
+		PCL_ERROR("Illegal prerejection similarity threshold %f, must be in [0,1[!\n",
+			similarity_threshold);
+		return;
+	}
+
+	if (k_correspondences_ <= 0)
+	{
+		PCL_ERROR("[pcl::%s::computeTransformation] ", getClassName().c_str());
+		PCL_ERROR("Illegal correspondence randomness %d, must be > 0!\n",
+			k_correspondences_);
+		return;
+	}
+
+	// Initialize prerejector (similarity threshold already set to default value in constructor)
+	correspondence_rejector_poly_->setInputSource(input_);
+	correspondence_rejector_poly_->setInputTarget(target_);
+	correspondence_rejector_poly_->setCardinality(nr_samples_);
+	int num_rejections = 0; // For debugging
+
+	// Initialize results
+	final_transformation_ = guess;
+	inliers_.clear();
+	float lowest_error = std::numeric_limits<float>::max();
+	converged_ = false;
+
+	// Temporaries
+	std::vector<int> inliers;
+	float inlier_fraction;
+	float error;
+
+	// If guess is not the Identity matrix we check it
+	if (!guess.isApprox(Eigen::Matrix4f::Identity(), 0.01f))
+	{
+		getFitness(inliers, error);
+		inlier_fraction = static_cast<float> (inliers.size()) / static_cast<float> (input_->size());
+
+		if (inlier_fraction >= inlier_fraction_ && error < lowest_error)
+		{
+			inliers_ = inliers;
+			lowest_error = error;
+			converged_ = true;
+		}
+	}
+
+	// Feature correspondence cache
+	std::vector<std::vector<int> > similar_features(input_->size());
+
+	// Start
+	for (int i = 0; i < max_iterations_; ++i)
+	{
+		// Temporary containers
+		std::vector<int> sample_indices;
+		std::vector<int> corresponding_indices;
+
+		// Draw nr_samples_ random samples
+		selectSamples(*input_, nr_samples_, sample_indices);
+
+		// Find corresponding features in the target cloud
+		findSimilarFeatures(sample_indices, similar_features, corresponding_indices);
+
+		// Apply prerejection
+		if (!correspondence_rejector_poly_->thresholdPolygon(sample_indices, corresponding_indices))
+		{
+			++num_rejections;
+			continue;
+		}
+
+		// Estimate the transform from the correspondences, write to transformation_
+		transformation_estimation_->estimateRigidTransformation(*input_, sample_indices, *target_, corresponding_indices, transformation_);
+
+		// Take a backup of previous result
+		const Matrix4 final_transformation_prev = final_transformation_;
+
+		// Set final result to current transformation
+		final_transformation_ = transformation_;
+
+		// Transform the input and compute the error (uses input_ and final_transformation_)
+		getFitness(inliers, error);
+
+		// Restore previous result
+		final_transformation_ = final_transformation_prev;
+
+		// If the new fit is better, update results
+		inlier_fraction = static_cast<float> (inliers.size()) / static_cast<float> (input_->size());
+
+		// Update result if pose hypothesis is better
+		if (inlier_fraction >= inlier_fraction_ && error < lowest_error)
+		{
+			inliers_ = inliers;
+			lowest_error = error;
+			converged_ = true;
+			final_transformation_ = transformation_;
+			sourceCoorIndices.resize(sample_indices.size());
+			targetCoorIndices.resize(sample_indices.size());
+			for (int _index = 0; _index < sample_indices.size(); ++_index) {
+				sourceCoorIndices[_index] = sample_indices[_index];
+				targetCoorIndices[_index] = corresponding_indices[_index];
+			}
+		}
+	}
+
+
+	// Apply the final transformation
+	if (converged_)
+		transformPointCloud(*input_, output, final_transformation_);
+
+	// Debug output
+	PCL_DEBUG("[pcl::%s::computeTransformation] Rejected %i out of %i generated pose hypotheses.\n",
+		getClassName().c_str(), num_rejections, max_iterations_);
+}
+
+
 
 /**
  * @brief		pcl¿ÉÊÓ»¯²âÊÔ
@@ -1057,6 +1292,20 @@ void Keypoints2(
 	float Th =0.45,
 	float maxPersent = 0.7,
 	float minPersent = 0.4);
+
+void Keypoints3(
+	cloud::PointCloudNormalPtr& inCloud,
+	pcl::Indices& outIndices,
+	pcl::PointCloud<CustomPointT2>& cloudFeature,
+	float dis,
+	float dis2,
+	float alphaTh,
+	float alphaTh2,
+	float betaTh,
+	float segDis,
+	int minSize,
+	int edgeN,
+	bool conver=true);
 
 int keyViewer(
 	cloud::PointCloudNormalPtr pointCloudNormalPtr);
